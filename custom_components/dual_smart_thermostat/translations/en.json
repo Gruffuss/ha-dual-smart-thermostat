@@ -139,6 +139,7 @@
                     "configure_fan": "Configure fan settings",
                     "configure_humidity": "Configure humidity control",
                     "configure_openings": "Configure window/door sensors",
+                    "configure_presence": "Configure presence sensors",
                     "configure_presets": "Configure temperature presets",
                     "configure_floor_heating": "Configure floor heating protection"
                 },
@@ -146,6 +147,7 @@
                     "configure_fan": "Enable configuration of fan settings. This allows you to set up a separate fan entity that can run independently for air circulation.",
                     "configure_humidity": "Enable configuration of humidity monitoring and control. This allows you to set up humidity sensors and dry mode operation.",
                     "configure_openings": "Enable configuration of window and door sensors so the thermostat can pause operation when openings are detected.",
+                    "configure_presence": "Enable configuration of presence/occupancy sensors so the thermostat switches to the Away preset when nobody is present (requires an Away preset).",
                     "configure_presets": "Enable configuration of temperature presets like Away, Comfort, and Eco for quick mode changes.",
                     "configure_floor_heating": "Enable configuration of floor temperature protection. When enabled you can set a floor sensor and max/min limits to protect your flooring."
                 }
@@ -380,6 +382,78 @@
                     "opening_9_timeout_close": "Time to wait after this opening closes before turning HVAC back on. Set to 0 for immediate response.",
                     "opening_10_timeout_open": "Time to wait after this opening activates before turning off HVAC. Set to 0 for immediate response.",
                     "opening_10_timeout_close": "Time to wait after this opening closes before turning HVAC back on. Set to 0 for immediate response."
+                }
+            },
+            "presence_toggle": {
+                "title": "Presence Sensor Configuration",
+                "description": "Enable switching to the Away preset based on presence/occupancy sensors.",
+                "data": {
+                    "presence": "Enable presence sensing"
+                },
+                "data_description": {
+                    "presence": "Enable presence/occupancy sensor integration. When enabled, the thermostat switches to the Away preset when nobody is present and restores the previous preset when presence returns. Requires an Away preset to be configured."
+                }
+            },
+            "presence_selection": {
+                "title": "Presence Sensor Selection",
+                "description": "Select presence/occupancy sensors and configure their operational scope.",
+                "data": {
+                    "selected_presence": "Presence sensors",
+                    "presence_scope": "HVAC modes affected by presence"
+                },
+                "data_description": {
+                    "selected_presence": "Select binary sensors that report presence/occupancy. The sensor should be 'on' (or 'home') when someone is present and 'off' when nobody is present.",
+                    "presence_scope": "Select which HVAC modes should switch to the Away preset when nobody is present. If 'All HVAC modes' is selected or none selected, presence applies to every mode."
+                }
+            },
+            "presence_config": {
+                "title": "Presence Timeout Settings",
+                "description": "Configure optional debounce delays for when presence is detected and lost. Leave at 0 for immediate response.\n\nSelected presence sensors:\n{selected_entities}",
+                "data": {
+                    "presence_scope": "HVAC modes affected by presence",
+                    "presence_1_timeout_present": "Presence 1 - Present timeout (seconds)",
+                    "presence_1_timeout_absent": "Presence 1 - Absent timeout (seconds)",
+                    "presence_2_timeout_present": "Presence 2 - Present timeout (seconds)",
+                    "presence_2_timeout_absent": "Presence 2 - Absent timeout (seconds)",
+                    "presence_3_timeout_present": "Presence 3 - Present timeout (seconds)",
+                    "presence_3_timeout_absent": "Presence 3 - Absent timeout (seconds)",
+                    "presence_4_timeout_present": "Presence 4 - Present timeout (seconds)",
+                    "presence_4_timeout_absent": "Presence 4 - Absent timeout (seconds)",
+                    "presence_5_timeout_present": "Presence 5 - Present timeout (seconds)",
+                    "presence_5_timeout_absent": "Presence 5 - Absent timeout (seconds)",
+                    "presence_6_timeout_present": "Presence 6 - Present timeout (seconds)",
+                    "presence_6_timeout_absent": "Presence 6 - Absent timeout (seconds)",
+                    "presence_7_timeout_present": "Presence 7 - Present timeout (seconds)",
+                    "presence_7_timeout_absent": "Presence 7 - Absent timeout (seconds)",
+                    "presence_8_timeout_present": "Presence 8 - Present timeout (seconds)",
+                    "presence_8_timeout_absent": "Presence 8 - Absent timeout (seconds)",
+                    "presence_9_timeout_present": "Presence 9 - Present timeout (seconds)",
+                    "presence_9_timeout_absent": "Presence 9 - Absent timeout (seconds)",
+                    "presence_10_timeout_present": "Presence 10 - Present timeout (seconds)",
+                    "presence_10_timeout_absent": "Presence 10 - Absent timeout (seconds)"
+                },
+                "data_description": {
+                    "presence_scope": "Select which HVAC modes should switch to the Away preset when nobody is present. When no scope is selected or 'All HVAC modes' is chosen, every mode is affected.",
+                    "presence_1_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_1_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_2_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_2_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_3_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_3_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_4_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_4_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_5_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_5_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_6_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_6_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_7_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_7_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_8_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_8_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_9_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_9_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_10_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_10_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response."
                 }
             },
             "heat_cool_mode": {
@@ -720,6 +794,7 @@
                     "configure_fan": "Configure fan settings",
                     "configure_humidity": "Configure humidity control",
                     "configure_openings": "Configure window/door sensors",
+                    "configure_presence": "Configure presence sensors",
                     "configure_presets": "Configure temperature presets",
                     "configure_floor_heating": "Configure floor heating protection"
                 },
@@ -727,6 +802,7 @@
                     "configure_fan": "Enable configuration of fan settings. This allows you to set up a separate fan entity that can run independently for air circulation.",
                     "configure_humidity": "Enable configuration of humidity monitoring and control. This allows you to set up humidity sensors and dry mode operation.",
                     "configure_openings": "Enable configuration of window and door sensors so the thermostat can pause operation when openings are detected.",
+                    "configure_presence": "Enable configuration of presence/occupancy sensors so the thermostat switches to the Away preset when nobody is present (requires an Away preset).",
                     "configure_presets": "Enable configuration of temperature presets like Away, Comfort, and Eco for quick mode changes.",
                     "configure_floor_heating": "Enable configuration of floor temperature protection. When enabled you can set a floor sensor and max/min limits to protect your flooring."
                 }
@@ -929,6 +1005,76 @@
                     "opening_9_timeout_close": "Time to wait after this opening closes before turning HVAC back on. Set to 0 for immediate response.",
                     "opening_10_timeout_open": "Time to wait after this opening activates before turning off HVAC. Set to 0 for immediate response.",
                     "opening_10_timeout_close": "Time to wait after this opening closes before turning HVAC back on. Set to 0 for immediate response."
+                }
+            },
+            "presence_options": {
+                "title": "Presence Configuration",
+                "description": "Configure presence/occupancy sensors so the thermostat switches to the Away preset when nobody is present.",
+                "data": {
+                    "selected_presence": "Presence sensors"
+                },
+                "data_description": {
+                    "selected_presence": "Choose binary sensors that report presence/occupancy. When all selected sensors report absence, the thermostat switches to the Away preset; the previous preset is restored when presence returns."
+                }
+            },
+            "presence_config": {
+                "title": "Presence Timeout Settings",
+                "description": "Configure optional debounce delays for when presence is detected and lost. Leave at 0 for immediate response.\n\nSelected presence sensors:\n{selected_entities}",
+                "data": {
+                    "presence_scope": "HVAC modes affected by presence",
+                    "presence_1_label": "Presence 1",
+                    "presence_1_timeout_present": "Present timeout (seconds)",
+                    "presence_1_timeout_absent": "Absent timeout (seconds)",
+                    "presence_2_label": "Presence 2",
+                    "presence_2_timeout_present": "Present timeout (seconds)",
+                    "presence_2_timeout_absent": "Absent timeout (seconds)",
+                    "presence_3_label": "Presence 3",
+                    "presence_3_timeout_present": "Present timeout (seconds)",
+                    "presence_3_timeout_absent": "Absent timeout (seconds)",
+                    "presence_4_label": "Presence 4",
+                    "presence_4_timeout_present": "Present timeout (seconds)",
+                    "presence_4_timeout_absent": "Absent timeout (seconds)",
+                    "presence_5_label": "Presence 5",
+                    "presence_5_timeout_present": "Present timeout (seconds)",
+                    "presence_5_timeout_absent": "Absent timeout (seconds)",
+                    "presence_6_label": "Presence 6",
+                    "presence_6_timeout_present": "Present timeout (seconds)",
+                    "presence_6_timeout_absent": "Absent timeout (seconds)",
+                    "presence_7_label": "Presence 7",
+                    "presence_7_timeout_present": "Present timeout (seconds)",
+                    "presence_7_timeout_absent": "Absent timeout (seconds)",
+                    "presence_8_label": "Presence 8",
+                    "presence_8_timeout_present": "Present timeout (seconds)",
+                    "presence_8_timeout_absent": "Absent timeout (seconds)",
+                    "presence_9_label": "Presence 9",
+                    "presence_9_timeout_present": "Present timeout (seconds)",
+                    "presence_9_timeout_absent": "Absent timeout (seconds)",
+                    "presence_10_label": "Presence 10",
+                    "presence_10_timeout_present": "Present timeout (seconds)",
+                    "presence_10_timeout_absent": "Absent timeout (seconds)"
+                },
+                "data_description": {
+                    "presence_scope": "Select which HVAC modes should switch to the Away preset when nobody is present. When no scope is selected or 'All HVAC modes' is chosen, every mode is affected.",
+                    "presence_1_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_1_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_2_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_2_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_3_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_3_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_4_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_4_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_5_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_5_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_6_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_6_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_7_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_7_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_8_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_8_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_9_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_9_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
+                    "presence_10_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
+                    "presence_10_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response."
                 }
             },
             "advanced_options": {

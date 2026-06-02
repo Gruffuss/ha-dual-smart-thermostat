@@ -5,6 +5,16 @@
       "description": "Secondary heater timeout only works when secondary heater is defined",
       "example": "secondary_heater: switch.aux_heater \u2192 secondary_heater_timeout: '00:05:00'"
     },
+    "presence": {
+      "required_parameter": "away",
+      "description": "Presence sensing switches to the away preset when nobody is present, so an away preset must be configured",
+      "example": "away: {temperature: 16} \u2192 presence: [binary_sensor.occupancy]"
+    },
+    "presence_scope": {
+      "required_parameter": "presence",
+      "description": "Presence scope only applies when presence sensors are defined",
+      "example": "presence: [binary_sensor.occupancy] \u2192 presence_scope: [heat]"
+    },
     "secondary_heater_dual_mode": {
       "required_parameter": "secondary_heater",
       "description": "Dual mode operation only works when secondary heater is defined",

@@ -224,6 +224,33 @@ hvac_power_tolerance: 0.5  # ← Only works with hvac_power_levels
 
 ---
 
+### 👤 Presence Sensing Dependencies
+
+**Enabling Parameter**: `presence` (and the `away` preset)
+
+Presence sensing is the inverse of opening detection: when no configured
+presence sensor reports someone present, the thermostat switches to the `away`
+preset, and restores the previously active preset when presence returns. Because
+it switches to the `away` preset, an `away` preset **must** be configured for the
+feature to do anything.
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `presence` | List of presence/occupancy binary sensors (optionally with per-sensor `timeout`/`absence_timeout` debounce) | `[binary_sensor.occupancy]` |
+| `presence_scope` | HVAC modes the away switch applies to (default: all) | `[heat]` |
+
+**Configuration Example**:
+```yaml
+away: { temperature: 16 }            # ← Required for presence to do anything
+presence:                            # ← Switches to away when nobody present
+  - binary_sensor.living_room_occupancy
+  - entity_id: binary_sensor.bedroom_occupancy
+    absence_timeout: "00:02:00"      # wait 2 min of absence before going away
+presence_scope: [heat]               # ← Only works when presence is set
+```
+
+---
+
 ## ⚠️ Critical Conflicts (3 Total)
 
 These parameters **cannot** have the same values or conflict with each other:

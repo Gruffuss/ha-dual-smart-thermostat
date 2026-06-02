@@ -57,7 +57,12 @@ class TestFeatureAvailabilityContracts:
         [
             (
                 SYSTEM_TYPE_SIMPLE_HEATER,
-                ["configure_floor_heating", "configure_openings", "configure_presets"],
+                [
+                    "configure_floor_heating",
+                    "configure_openings",
+                    "configure_presence",
+                    "configure_presets",
+                ],
             ),
             (
                 SYSTEM_TYPE_AC_ONLY,
@@ -65,6 +70,7 @@ class TestFeatureAvailabilityContracts:
                     "configure_fan",
                     "configure_humidity",
                     "configure_openings",
+                    "configure_presence",
                     "configure_presets",
                 ],
             ),
@@ -75,6 +81,7 @@ class TestFeatureAvailabilityContracts:
                     "configure_fan",
                     "configure_humidity",
                     "configure_openings",
+                    "configure_presence",
                     "configure_presets",
                 ],
             ),
@@ -85,6 +92,7 @@ class TestFeatureAvailabilityContracts:
                     "configure_fan",
                     "configure_humidity",
                     "configure_openings",
+                    "configure_presence",
                     "configure_presets",
                 ],
             ),

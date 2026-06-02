@@ -5,11 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from .const import (
+    ATTR_ABSENCE_TIMEOUT,
     ATTR_CLOSING_TIMEOUT,
     ATTR_OPENING_TIMEOUT,
+    ATTR_PRESENCE_TIMEOUT,
     CONF_COOLER,
     CONF_HEATER,
     CONF_OPENINGS_SCOPE,
+    CONF_PRESENCE_SCOPE,
     CONF_SENSOR,
 )
 
@@ -191,6 +194,71 @@ class OpeningsProcessor:
             # Remove both possible key names
             collected_config.pop(CONF_OPENINGS_SCOPE, None)
             collected_config.pop("opening_scope", None)
+
+
+class PresenceProcessor:
+    """Processor for presence configuration.
+
+    Mirrors :class:`OpeningsProcessor` but uses presence-specific debounce
+    timeout keys (``timeout`` for present, ``absence_timeout`` for absent).
+    """
+
+    @staticmethod
+    def process_presence_config(
+        user_input: dict[str, Any], selected_entities: list[str] | None = None
+    ) -> list[str | dict[str, Any]]:
+        """Process presence configuration and convert to expected format.
+
+        Args:
+            user_input: User input containing indexed timeout configurations
+            selected_entities: List of selected presence sensor entities
+
+        Returns:
+            List of presence configs (dicts with optional timeouts)
+        """
+        if selected_entities is None:
+            selected_entities = user_input.get("selected_presence", [])
+
+        presence_list = []
+
+        for i, entity_id in enumerate(selected_entities):
+            present_key = f"presence_{i + 1}_timeout_present"
+            absent_key = f"presence_{i + 1}_timeout_absent"
+
+            present_timeout = user_input.get(present_key, 0)
+            absent_timeout = user_input.get(absent_key, 0)
+
+            presence_obj: dict[str, Any] = {"entity_id": entity_id}
+            if present_timeout:
+                presence_obj[ATTR_PRESENCE_TIMEOUT] = present_timeout
+            if absent_timeout:
+                presence_obj[ATTR_ABSENCE_TIMEOUT] = absent_timeout
+            presence_list.append(presence_obj)
+
+        return presence_list
+
+    @staticmethod
+    def extract_selected_entities_from_config(presence_config: list) -> list[str]:
+        """Extract entity IDs from presence configuration."""
+        selected_entities = []
+        if presence_config:
+            for presence in presence_config:
+                if isinstance(presence, dict):
+                    selected_entities.append(presence["entity_id"])
+                else:
+                    selected_entities.append(presence)
+        return selected_entities
+
+    @staticmethod
+    def clean_presence_scope(collected_config: dict[str, Any]) -> None:
+        """Remove presence_scope if it's "all" or not set (default behavior)."""
+        presence_scope = collected_config.get(CONF_PRESENCE_SCOPE)
+
+        if presence_scope and presence_scope != "all" and "all" not in presence_scope:
+            # Keep the scope setting only if it's not "all"
+            pass
+        else:
+            collected_config.pop(CONF_PRESENCE_SCOPE, None)
 
 
 class FlowStepTracker:

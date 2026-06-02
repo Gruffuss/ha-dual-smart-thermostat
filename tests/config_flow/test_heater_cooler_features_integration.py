@@ -659,6 +659,7 @@ class TestHeaterCoolerAvailableFeatures:
             "configure_fan",
             "configure_humidity",
             "configure_openings",
+            "configure_presence",
             "configure_presets",
         ]
 

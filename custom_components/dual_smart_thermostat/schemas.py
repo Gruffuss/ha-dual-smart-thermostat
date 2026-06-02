@@ -673,6 +673,11 @@ def get_openings_toggle_schema():
     return vol.Schema({vol.Optional("openings", default=False): get_boolean_selector()})
 
 
+def get_presence_toggle_schema():
+    """Get presence toggle schema."""
+    return vol.Schema({vol.Optional("presence", default=False): get_boolean_selector()})
+
+
 def get_fan_toggle_schema():
     """Get fan toggle schema."""
     return vol.Schema({vol.Optional("fan", default=False): get_boolean_selector()})
@@ -711,13 +716,19 @@ def get_features_schema(
 
     # Define feature availability by system type
     system_features = {
-        SystemType.AC_ONLY: ["fan", "humidity", "openings", "presets"],
-        SystemType.SIMPLE_HEATER: ["floor_heating", "openings", "presets"],
+        SystemType.AC_ONLY: ["fan", "humidity", "openings", "presence", "presets"],
+        SystemType.SIMPLE_HEATER: [
+            "floor_heating",
+            "openings",
+            "presence",
+            "presets",
+        ],
         SystemType.HEATER_COOLER: [
             "floor_heating",
             "fan",
             "humidity",
             "openings",
+            "presence",
             "presets",
         ],
         SystemType.HEAT_PUMP: [
@@ -725,13 +736,16 @@ def get_features_schema(
             "fan",
             "humidity",
             "openings",
+            "presence",
             "presets",
         ],
-        SystemType.DUAL_STAGE: ["floor_heating", "openings", "presets"],
+        SystemType.DUAL_STAGE: ["floor_heating", "openings", "presence", "presets"],
     }
 
     # Get available features for this system type
-    available_features = system_features.get(system_type, ["openings", "presets"])
+    available_features = system_features.get(
+        system_type, ["openings", "presence", "presets"]
+    )
 
     # Define feature order for consistent UI
     feature_order = [
@@ -739,6 +753,7 @@ def get_features_schema(
         "fan",
         "humidity",
         "openings",
+        "presence",
         "presets",
     ]
 
@@ -895,6 +910,25 @@ def get_openings_selection_schema(
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain=[INPUT_BOOLEAN_DOMAIN, BINARY_SENSOR_DOMAIN, SWITCH_DOMAIN],
+                    multiple=True,
+                )
+            ),
+        }
+    )
+
+
+def get_presence_selection_schema(
+    collected_config: dict[str, Any] = None, defaults: list[str] = None
+):
+    """Get schema for selecting presence sensor entities."""
+    _LOGGER.debug("Presence selection defaults: %s", defaults)
+    return vol.Schema(
+        {
+            vol.Optional(
+                "selected_presence", default=defaults or []
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain=[BINARY_SENSOR_DOMAIN],
                     multiple=True,
                 )
             ),

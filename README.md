@@ -509,6 +509,50 @@ climate:
 
 [all features ⤴️](#features)
 
+## Presence
+
+Presence sensing is the conceptual inverse of openings: instead of pausing the HVAC while a window is open, the `dual_smart_thermostat` switches to the `away` preset when nobody is present, and restores the previously active preset when presence returns.
+
+The `presence` configuration variable accepts a list of presence/occupancy `binary_sensor` entities (and/or objects). A sensor is considered *present* when its state is `on` (or `home`) and *absent* when `off`. If every available sensor reports absent, the thermostat activates the `away` preset.
+
+> [!NOTE]
+> Presence sensing requires an `away` preset to be configured — that is the preset it switches to. If a configured presence sensor becomes `unavailable`, it is treated as *present* so a sensor outage never forces the away preset.
+
+### Presence entities and objects
+
+A presence object can contain a `timeout` and an `absence_timeout` property. `timeout` is how long presence must persist before the previous preset is restored; `absence_timeout` is how long absence must persist before switching to `away`. These debounce short, spurious state changes.
+
+### Presence Scope
+
+The `presence_scope` configuration variable works exactly like `openings_scope`: if set to `all` or not defined, presence applies to every HVAC mode. If set, the away switch only applies while operating in the listed HVAC modes.
+
+```yaml
+presence_scope: [heat, cool]
+```
+
+### Presence Configuration
+
+```yaml
+# Example configuration.yaml entry
+climate:
+  - platform: dual_smart_thermostat
+    name: Study
+    heater: switch.study_heater
+    cooler: switch.study_cooler
+    target_sensor: sensor.study_temperature
+    away:
+      temperature: 16 # required: the preset presence switches to
+    home:
+      temperature: 21
+    presence:
+      - binary_sensor.living_room_occupancy
+      - entity_id: binary_sensor.bedroom_occupancy
+        absence_timeout: 00:02:00
+    presence_scope: [heat, cool]
+```
+
+[all features ⤴️](#features)
+
 ## Floor heating temperature control
 
 The `dual_smart_thermostat` can control the floor heating temperature. The thermostat can turn off if the floor heating reaches the maximum allowed temperature you define in order to protect the floor from overheating and damage.

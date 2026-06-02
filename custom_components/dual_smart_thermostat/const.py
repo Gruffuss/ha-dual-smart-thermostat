@@ -120,6 +120,8 @@ CONF_PRECISION = "precision"
 CONF_TEMP_STEP = "target_temp_step"
 CONF_OPENINGS = "openings"
 CONF_OPENINGS_SCOPE = "openings_scope"
+CONF_PRESENCE = "presence"
+CONF_PRESENCE_SCOPE = "presence_scope"
 CONF_HEAT_COOL_MODE = "heat_cool_mode"
 CONF_HEAT_PUMP_COOLING = "heat_pump_cooling"
 
@@ -145,6 +147,11 @@ ATTR_LAST_HVAC_MODE = "last_hvac_mode"
 SET_HVAC_ACTION_REASON_SENSOR_SIGNAL = "set_hvac_action_reason_sensor_signal_{}"
 ATTR_OPENING_TIMEOUT = "timeout"
 ATTR_CLOSING_TIMEOUT = "closing_timeout"
+# Presence sensing debounce timeouts (mirrors openings, inverted semantics):
+# ATTR_PRESENCE_TIMEOUT  - time presence must be detected before it is honored
+# ATTR_ABSENCE_TIMEOUT   - time absence must persist before switching to away
+ATTR_PRESENCE_TIMEOUT = "timeout"
+ATTR_ABSENCE_TIMEOUT = "absence_timeout"
 
 PRESET_ANTI_FREEZE = "Anti Freeze"
 
@@ -171,6 +178,19 @@ TIMED_OPENING_SCHEMA = vol.Schema(
             cv.time_period, cv.positive_timedelta
         ),
         vol.Optional(ATTR_CLOSING_TIMEOUT): vol.All(
+            cv.time_period, cv.positive_timedelta
+        ),
+    }
+)
+
+
+TIMED_PRESENCE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional(ATTR_PRESENCE_TIMEOUT): vol.All(
+            cv.time_period, cv.positive_timedelta
+        ),
+        vol.Optional(ATTR_ABSENCE_TIMEOUT): vol.All(
             cv.time_period, cv.positive_timedelta
         ),
     }

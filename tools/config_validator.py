@@ -49,6 +49,12 @@ class ConfigValidator:
             "hvac_power_min": "hvac_power_levels",
             "hvac_power_max": "hvac_power_levels",
             "hvac_power_tolerance": "hvac_power_levels",
+            # Presence sensing dependencies
+            # The presence scope only matters when presence sensors are set, and
+            # presence sensing switches to the "away" preset, so an away preset
+            # must be configured for the feature to do anything.
+            "presence_scope": "presence",
+            "presence": "away",
         }
 
         self.conflicts = [
