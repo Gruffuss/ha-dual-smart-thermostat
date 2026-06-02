@@ -546,11 +546,19 @@ climate:
     home:
       temperature: 21
     presence:
-      - binary_sensor.living_room_occupancy        # no debounce: react immediately
-      - entity_id: binary_sensor.bedroom_occupancy
-        timeout: 00:00:30                           # wait 30s of presence before restoring the previous preset
+      # plain entity id (string form) - no debounce, reacts immediately
+      - binary_sensor.living_room_occupancy
+      # object form with only the absent debounce
+      - entity_id: binary_sensor.hallway_occupancy
         absence_timeout: 00:02:00                   # wait 2min of absence before switching to away
-    presence_scope: [heat, cool]
+      # object form with only the present debounce
+      - entity_id: binary_sensor.office_occupancy
+        timeout: 00:00:30                           # wait 30s of presence before restoring the previous preset
+      # object form with both debounce timeouts
+      - entity_id: binary_sensor.bedroom_occupancy
+        timeout: 00:00:30
+        absence_timeout: 00:02:00
+    presence_scope: [heat, cool]                    # optional; omit (or "all") to affect every HVAC mode
 ```
 
 Both `timeout` (present debounce) and `absence_timeout` (absent debounce) are optional and independent — set either, both, or neither. Omitting a timeout means that transition is applied immediately.
@@ -1235,6 +1243,36 @@ climate:
       - binary_sensor.window2
       - entity_id: binary_sensor.window3
         timeout: 00:00:30 # <-optional
+```
+
+## PRESENCE Example
+
+Presence sensing switches to the `away` preset when nobody is present, so an
+`away` preset is required. Every supported form is shown below: plain entity
+ids, objects with only `timeout`, only `absence_timeout`, or both, plus the
+optional `presence_scope`.
+
+```yaml
+climate:
+  - platform: dual_smart_thermostat
+    name: Study
+    heater: switch.study_heater
+    cooler: switch.study_cooler
+    target_sensor: sensor.study_temperature
+    away: # <-required: the preset presence switches to
+      temperature: 16
+    home: # <-optional: any preset restored when presence returns
+      temperature: 21
+    presence: # <-required
+      - binary_sensor.living_room_occupancy # string form, immediate
+      - entity_id: binary_sensor.hallway_occupancy
+        absence_timeout: 00:02:00 # <-optional: debounce going away
+      - entity_id: binary_sensor.office_occupancy
+        timeout: 00:00:30 # <-optional: debounce coming back
+      - entity_id: binary_sensor.bedroom_occupancy
+        timeout: 00:00:30 # <-optional
+        absence_timeout: 00:02:00 # <-optional
+    presence_scope: [heat, cool] # <-optional, default: all
 ```
 
 ## Tolerances
