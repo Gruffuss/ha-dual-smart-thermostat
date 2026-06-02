@@ -403,7 +403,7 @@
                 },
                 "data_description": {
                     "selected_presence": "Select binary sensors that report presence/occupancy. The sensor should be 'on' (or 'home') when someone is present and 'off' when nobody is present.",
-                    "presence_scope": "Select which HVAC modes should switch to the Away preset when nobody is present. If 'All HVAC modes' is selected or none selected, presence applies to every mode."
+                    "presence_scope": "Limits when the automatic switch to the Away preset is triggered, based on the HVAC mode active when presence is lost. 'All HVAC modes' (or none selected) triggers Away in any mode. This does not make the Away preset mode-specific — a preset always applies to the active mode."
                 }
             },
             "presence_config": {
@@ -433,7 +433,7 @@
                     "presence_10_timeout_absent": "Presence 10 - Absent timeout (seconds)"
                 },
                 "data_description": {
-                    "presence_scope": "Select which HVAC modes should switch to the Away preset when nobody is present. When no scope is selected or 'All HVAC modes' is chosen, every mode is affected.",
+                    "presence_scope": "Limits when the automatic switch to the Away preset is triggered, based on the HVAC mode active when presence is lost. 'All HVAC modes' (or none selected) triggers Away in any mode. This does not make the Away preset mode-specific — a preset always applies to the active mode.",
                     "presence_1_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
                     "presence_1_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
                     "presence_2_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
@@ -1054,7 +1054,7 @@
                     "presence_10_timeout_absent": "Absent timeout (seconds)"
                 },
                 "data_description": {
-                    "presence_scope": "Select which HVAC modes should switch to the Away preset when nobody is present. When no scope is selected or 'All HVAC modes' is chosen, every mode is affected.",
+                    "presence_scope": "Limits when the automatic switch to the Away preset is triggered, based on the HVAC mode active when presence is lost. 'All HVAC modes' (or none selected) triggers Away in any mode. This does not make the Away preset mode-specific — a preset always applies to the active mode.",
                     "presence_1_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",
                     "presence_1_timeout_absent": "Time absence must persist before switching to the Away preset. Set to 0 for immediate response.",
                     "presence_2_timeout_present": "Time presence must persist before the previous preset is restored. Set to 0 for immediate response.",

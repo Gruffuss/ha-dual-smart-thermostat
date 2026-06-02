@@ -525,11 +525,14 @@ A presence object can contain a `timeout` and an `absence_timeout` property. `ti
 
 ### Presence Scope
 
-The `presence_scope` configuration variable works exactly like `openings_scope`: if set to `all` or not defined, presence applies to every HVAC mode. If set, the away switch only applies while operating in the listed HVAC modes.
+The `presence_scope` configuration variable limits **when the automatic switch to `away` is triggered**, based on the HVAC mode the thermostat is operating in *at the moment presence is lost*. If set to `all` or not defined, absence triggers the away switch in any mode.
 
 ```yaml
 presence_scope: [heat, cool]
 ```
+
+> [!NOTE]
+> Scope does **not** make the `away` preset itself mode-specific — a preset always retargets whichever mode is active, so there is no such thing as an "away preset for heating only". The only thing `presence_scope` controls is *whether the away switch fires* while you happen to be running in a given mode (for example, `[heat, cool]` means "don't auto-go-away while in fan-only or dry mode"). It is evaluated when a presence sensor changes (and at startup), not when you change the HVAC mode. If you don't have a specific reason to restrict it, leave it unset.
 
 ### Presence Configuration
 
@@ -558,7 +561,7 @@ climate:
       - entity_id: binary_sensor.bedroom_occupancy
         timeout: 00:00:30
         absence_timeout: 00:02:00
-    presence_scope: [heat, cool]                    # optional; omit (or "all") to affect every HVAC mode
+    presence_scope: [heat, cool]                    # optional; only auto-switch to away while in these modes (see note below). Omit to allow any mode
 ```
 
 Both `timeout` (present debounce) and `absence_timeout` (absent debounce) are optional and independent — set either, both, or neither. Omitting a timeout means that transition is applied immediately.
@@ -907,7 +910,7 @@ The reason is grouped into three categories:
 
 ### presence_scope
 
-  _(optional) (array[string])_  "The scope of presence sensing. If set to [`all`] or not defined, presence applies to every HVAC mode. If set, the thermostat only switches to the `away` preset while operating in the defined HVAC modes. For example, if set to `heat` presence only affects heating operation."
+  _(optional) (array[string])_  "Limits *when* the automatic switch to the `away` preset is triggered, based on the HVAC mode active at the moment presence is lost. If set to [`all`] or not defined, absence triggers the away switch in any mode. If set, the away switch only fires while operating in the listed modes (for example, `[heat, cool]` means absence is ignored while in fan-only or dry mode). Note: this does **not** make the `away` preset mode-specific — a preset always applies to the active mode — and it is only re-evaluated on presence sensor changes, not on HVAC mode changes."
 
   _default: `all`_
 
@@ -1272,7 +1275,7 @@ climate:
       - entity_id: binary_sensor.bedroom_occupancy
         timeout: 00:00:30 # <-optional
         absence_timeout: 00:02:00 # <-optional
-    presence_scope: [heat, cool] # <-optional, default: all
+    presence_scope: [heat, cool] # <-optional, default: all. Only gates *whether* the away switch fires while in these modes; it does not make the away preset mode-specific
 ```
 
 ## Tolerances
