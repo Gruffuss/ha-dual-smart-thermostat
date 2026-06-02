@@ -33,6 +33,7 @@ The `dual_smart_thermostat` is an enhanced version of generic thermostat impleme
 | **Heat Pump Mode** | ![heat/cool](docs/images/sun-snowflake-custom.png) | [docs](#heat-pump-one-switch-heatcool-mode) |
 | **Floor Temperature Control** | ![heating-coil](docs/images/heating-coil-custom.png) ![snowflake-thermometer](docs/images/snowflake-thermometer-custom.png)  ![thermometer-alert](docs/images/thermometer-alert-custom.png) | [docs](#floor-heating-temperature-control) |
 | **Window/Door Sensor Integration (Openings)** | ![window-open](docs/images/window-open-custom.png)  ![window-open](docs/images/door-open-custom.png) ![chevron-right](docs/images/chevron-right-custom.png) ![timer-cog](docs/images/timer-cog-outline-custom.png)  ![chevron-right](docs/images/chevron-right-custom.png) ![hvac-off](docs/images/hvac-off-custom.png)| [docs](#openings) |
+| **Presence Sensing (Away on absence)** | | [docs](#presence) |
 | **Preset Modes Support** |  | [docs](#presets) |
 | **Auto Mode (Priority Engine)** | | [docs](#auto-mode) |
 | **HVAC Action Reason Tracking** | | [docs](#hvac-action-reason) |
@@ -873,6 +874,29 @@ The reason is grouped into three categories:
 ### openings_scope
 
   _(optional) (array[string])_  "The scope of the openings. If set to [`all`] or not defined, any open openings will turn off the current hvac device and it will be in the idle state. If set, only devices that operating in the defined HVAC modes will be turned off. For example, if set to `heat` only the heater will be turned off if any of the openings are open."
+
+  _default: `all`_
+
+  options:
+    - `all`
+    - `heat`
+    - `cool`
+    - `heat_cool`
+    - `fan_only`
+
+### presence
+
+  _(optional) (list)_  "list of presence/occupancy `binary_sensor` `entity_id`'s and/or objects. Presence sensing is the inverse of openings: when every available sensor reports absence, the thermostat switches to the `away` preset, and the previously active preset is restored when presence returns. Requires an `away` preset to be configured. If a sensor is `unavailable` it is treated as present, so a sensor outage never forces the away preset."
+
+  `entity_id: <value>` The entity id of the presence/occupancy sensor. Considered present when `on` (or `home`), absent when `off` (string)</br>
+
+  `timeout: <value>` The time presence must persist before the previous preset is restored (timedelta)</br>
+
+  `absence_timeout: <value>` The time absence must persist before switching to the `away` preset (timedelta)</br>
+
+### presence_scope
+
+  _(optional) (array[string])_  "The scope of presence sensing. If set to [`all`] or not defined, presence applies to every HVAC mode. If set, the thermostat only switches to the `away` preset while operating in the defined HVAC modes. For example, if set to `heat` presence only affects heating operation."
 
   _default: `all`_
 

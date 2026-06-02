@@ -90,3 +90,79 @@ async def test_startup_while_absent_applies_away(hass: HomeAssistant) -> None:
     await _setup_with_presence(hass, [PRESENCE_SENSOR])
 
     assert hass.states.get(common.ENTITY).attributes[ATTR_PRESET_MODE] == PRESET_AWAY
+
+
+@pytest.mark.asyncio
+async def test_yaml_object_form_and_scope(hass: HomeAssistant) -> None:
+    """The documented YAML object form and presence_scope are honored.
+
+    Validates that ``presence`` accepts ``entity_id`` objects and that
+    ``presence_scope`` restricts the away switch to the listed HVAC modes.
+    """
+    hass.states.async_set(common.ENT_SENSOR, 18)
+    hass.states.async_set(PRESENCE_SENSOR, "on")
+    await hass.async_block_till_done()
+
+    assert await async_setup_component(
+        hass,
+        CLIMATE,
+        {
+            "climate": {
+                "platform": DOMAIN,
+                "name": "test",
+                "heater": common.ENT_HEATER,
+                "target_sensor": common.ENT_SENSOR,
+                "initial_hvac_mode": "heat",
+                PRESET_AWAY: {"temperature": 16},
+                PRESET_HOME: {"temperature": 21},
+                "presence": [{"entity_id": PRESENCE_SENSOR}],
+                "presence_scope": ["heat"],
+            }
+        },
+    )
+    await hass.async_block_till_done()
+
+    await common.async_set_preset_mode(hass, PRESET_HOME)
+    await hass.async_block_till_done()
+
+    # In-scope (heat) absence -> away.
+    hass.states.async_set(PRESENCE_SENSOR, "off")
+    await hass.async_block_till_done()
+    assert hass.states.get(common.ENTITY).attributes[ATTR_PRESET_MODE] == PRESET_AWAY
+
+
+@pytest.mark.asyncio
+async def test_yaml_absence_timeout_parses(hass: HomeAssistant) -> None:
+    """The documented YAML ``absence_timeout`` (timedelta) parses and sets up.
+
+    A debounced sensor that is currently present should leave the preset
+    untouched immediately after setup.
+    """
+    hass.states.async_set(common.ENT_SENSOR, 18)
+    hass.states.async_set(PRESENCE_SENSOR, "on")
+    await hass.async_block_till_done()
+
+    assert await async_setup_component(
+        hass,
+        CLIMATE,
+        {
+            "climate": {
+                "platform": DOMAIN,
+                "name": "test",
+                "heater": common.ENT_HEATER,
+                "target_sensor": common.ENT_SENSOR,
+                "initial_hvac_mode": "heat",
+                PRESET_AWAY: {"temperature": 16},
+                PRESET_HOME: {"temperature": 21},
+                "presence": [
+                    {"entity_id": PRESENCE_SENSOR, "absence_timeout": "00:02:00"}
+                ],
+            }
+        },
+    )
+    await hass.async_block_till_done()
+
+    state = hass.states.get(common.ENTITY)
+    assert state is not None
+    # Present at startup -> not forced to away.
+    assert state.attributes[ATTR_PRESET_MODE] != PRESET_AWAY
