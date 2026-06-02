@@ -546,11 +546,14 @@ climate:
     home:
       temperature: 21
     presence:
-      - binary_sensor.living_room_occupancy
+      - binary_sensor.living_room_occupancy        # no debounce: react immediately
       - entity_id: binary_sensor.bedroom_occupancy
-        absence_timeout: 00:02:00
+        timeout: 00:00:30                           # wait 30s of presence before restoring the previous preset
+        absence_timeout: 00:02:00                   # wait 2min of absence before switching to away
     presence_scope: [heat, cool]
 ```
+
+Both `timeout` (present debounce) and `absence_timeout` (absent debounce) are optional and independent — set either, both, or neither. Omitting a timeout means that transition is applied immediately.
 
 [all features ⤴️](#features)
 
