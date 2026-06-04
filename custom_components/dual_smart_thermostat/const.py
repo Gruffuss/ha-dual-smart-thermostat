@@ -131,6 +131,7 @@ SERVICE_RESET_HEATING_POWER = "reset_heating_power"
 CONF_VALVE_MAINTENANCE = "valve_maintenance"
 CONF_VALVE_MAINTENANCE_INTERVAL = "valve_maintenance_interval"
 DEFAULT_VALVE_MAINTENANCE_INTERVAL = 7  # days
+SERVICE_RUN_VALVE_MAINTENANCE = "run_valve_maintenance"
 CONF_COLD_TOLERANCE = "cold_tolerance"
 CONF_HOT_TOLERANCE = "hot_tolerance"
 CONF_HEAT_TOLERANCE = "heat_tolerance"

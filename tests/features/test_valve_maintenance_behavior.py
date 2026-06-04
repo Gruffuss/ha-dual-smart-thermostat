@@ -111,3 +111,65 @@ async def test_maintenance_enabled_creates_manager(hass: HomeAssistant) -> None:
 
     thermostat = hass.data["entity_components"]["climate"].get_entity("climate.test")
     assert thermostat._valve_maintenance_manager is not None
+
+
+@pytest.mark.asyncio
+async def test_run_valve_maintenance_service_on_demand(hass: HomeAssistant) -> None:
+    """The run_valve_maintenance service pulses the valve even when disabled."""
+    calls = setup_switch(hass, False)
+    hass.config.units = METRIC_SYSTEM
+    assert await async_setup_component(
+        hass,
+        "climate",
+        {
+            "climate": {
+                "platform": DOMAIN,
+                "name": "test",
+                "heater": common.ENT_SWITCH,
+                "target_sensor": common.ENT_SENSOR,
+                # scheduled maintenance intentionally left disabled
+                "initial_hvac_mode": HVACMode.HEAT,
+            }
+        },
+    )
+    await hass.async_block_till_done()
+
+    thermostat = hass.data["entity_components"]["climate"].get_entity("climate.test")
+    assert thermostat._valve_maintenance_manager is None  # not scheduled
+
+    # Speed up the transient cycle for the test.
+    import custom_components.dual_smart_thermostat.managers.valve_maintenance_manager as vm
+
+    orig_init = vm.ValveMaintenanceManager.__init__
+
+    def fast_init(self, hass_, entity_id, interval_days, suspend_control, **kwargs):
+        orig_init(
+            self,
+            hass_,
+            entity_id,
+            interval_days,
+            suspend_control,
+            segment_seconds=0,
+        )
+
+    vm.ValveMaintenanceManager.__init__ = fast_init
+    try:
+        calls.clear()
+        await hass.services.async_call(
+            DOMAIN,
+            "run_valve_maintenance",
+            {"entity_id": "climate.test"},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+    finally:
+        vm.ValveMaintenanceManager.__init__ = orig_init
+
+    services = [c.service for c in calls]
+    assert services == [
+        SERVICE_TURN_ON,
+        SERVICE_TURN_OFF,
+        SERVICE_TURN_ON,
+        SERVICE_TURN_OFF,
+        SERVICE_TURN_OFF,
+    ]
