@@ -114,6 +114,14 @@ CONF_TARGET_TEMP_HIGH = "target_temp_high"
 CONF_TARGET_TEMP_LOW = "target_temp_low"
 CONF_AC_MODE = "ac_mode"
 CONF_MIN_DUR = "min_cycle_duration"
+
+# Proportional heating control (TPI / AI) over a PWM-driven valve switch
+CONF_HEATER_CONTROL_MODE = "heater_control_mode"
+CONF_PWM_CYCLE_DURATION = "pwm_cycle_duration"
+CONF_TPI_COEF_INT = "tpi_coef_int"
+CONF_TPI_COEF_EXT = "tpi_coef_ext"
+DEFAULT_PWM_CYCLE_DURATION = 1800  # seconds (30 min) - suits slow underfloor loops
+ATTR_HEATER_DUTY_CYCLE = "heater_duty_cycle"
 CONF_COLD_TOLERANCE = "cold_tolerance"
 CONF_HOT_TOLERANCE = "hot_tolerance"
 CONF_HEAT_TOLERANCE = "heat_tolerance"
@@ -188,3 +196,14 @@ class ToleranceDevice(enum.StrEnum):
     COOLER = "cooler"
     DRYER = "dryer"
     AUTO = "auto"
+
+
+class HeaterControlMode(enum.StrEnum):
+    """How the heater switch is driven.
+
+    ``BANG_BANG`` is the default hysteresis on/off control. ``TPI`` runs a
+    time-proportional duty cycle (PWM) over the switch.
+    """
+
+    BANG_BANG = "bang_bang"
+    TPI = "tpi"

@@ -98,6 +98,7 @@ from .const import (
     CONF_HEAT_PUMP_COOLING,
     CONF_HEAT_TOLERANCE,
     CONF_HEATER,
+    CONF_HEATER_CONTROL_MODE,
     CONF_HOT_TOLERANCE,
     CONF_HUMIDITY_SENSOR,
     CONF_HVAC_POWER_LEVELS,
@@ -120,6 +121,7 @@ from .const import (
     CONF_PRECISION,
     CONF_PRESETS,
     CONF_PRESETS_OLD,
+    CONF_PWM_CYCLE_DURATION,
     CONF_SENSOR,
     CONF_STALE_DURATION,
     CONF_TARGET_HUMIDITY,
@@ -127,13 +129,17 @@ from .const import (
     CONF_TARGET_TEMP_HIGH,
     CONF_TARGET_TEMP_LOW,
     CONF_TEMP_STEP,
+    CONF_TPI_COEF_EXT,
+    CONF_TPI_COEF_INT,
     CONF_USE_APPARENT_TEMP,
     DEFAULT_MAX_FLOOR_TEMP,
     DEFAULT_NAME,
+    DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
     MIN_CYCLE_KEEP_ALIVE,
     SET_HVAC_ACTION_REASON_SENSOR_SIGNAL,
     TIMED_OPENING_SCHEMA,
+    HeaterControlMode,
 )
 from .hvac_action_reason.hvac_action_reason import (
     SERVICE_SET_HVAC_ACTION_REASON,
@@ -231,6 +237,14 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_HEAT_COOL_MODE): cv.boolean,
         vol.Optional(CONF_MAX_TEMP): vol.Coerce(float),
         vol.Optional(CONF_MIN_DUR): vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(
+            CONF_HEATER_CONTROL_MODE, default=HeaterControlMode.BANG_BANG
+        ): vol.Coerce(HeaterControlMode),
+        vol.Optional(
+            CONF_PWM_CYCLE_DURATION, default=DEFAULT_PWM_CYCLE_DURATION
+        ): cv.positive_int,
+        vol.Optional(CONF_TPI_COEF_INT): vol.Coerce(float),
+        vol.Optional(CONF_TPI_COEF_EXT): vol.Coerce(float),
         vol.Optional(CONF_MIN_TEMP): vol.Coerce(float),
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
         vol.Optional(CONF_COLD_TOLERANCE, default=DEFAULT_TOLERANCE): vol.Coerce(float),
