@@ -1,6 +1,7 @@
 from datetime import timedelta
 import logging
 
+from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
@@ -27,6 +28,7 @@ from ..hvac_device.heater_aux_heater_device import HeaterAUXHeaterDevice
 from ..hvac_device.heater_cooler_device import HeaterCoolerDevice
 from ..hvac_device.heater_device import HeaterDevice
 from ..hvac_device.multi_hvac_device import MultiHvacDevice
+from ..hvac_device.wrapped_climate_device import WrappedClimateDevice
 from ..managers.environment_manager import EnvironmentManager
 from ..managers.feature_manager import FeatureManager
 from ..managers.hvac_power_manager import HvacPowerManager
@@ -272,6 +274,25 @@ class HVACDeviceFactory:
         fan_device: FanDevice | None,
     ) -> CoolerDevice:
 
+        # When the cooler is a real `climate` entity (e.g. a split AC) delegate
+        # control to it instead of toggling a switch. The wrapped entity already
+        # exposes its own fan/swing, so it is not combined with a separate fan
+        # device.
+        if self._is_climate_entity(cooler_entitiy_id):
+            _LOGGER.info(
+                "Creating wrapped climate cooler device for %s", cooler_entitiy_id
+            )
+            return WrappedClimateDevice(
+                self.hass,
+                cooler_entitiy_id,
+                self._min_cycle_duration,
+                self._initial_hvac_mode,
+                environment,
+                openings,
+                self._features,
+                hvac_power,
+            )
+
         cooler_device = CoolerDevice(
             self.hass,
             cooler_entitiy_id,
@@ -294,3 +315,8 @@ class HVACDeviceFactory:
             )
 
         return cooler_device
+
+    @staticmethod
+    def _is_climate_entity(entity_id: str | None) -> bool:
+        """Return True if the entity_id belongs to the climate domain."""
+        return bool(entity_id) and entity_id.split(".")[0] == CLIMATE_DOMAIN
