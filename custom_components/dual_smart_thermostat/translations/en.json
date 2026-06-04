@@ -89,7 +89,9 @@
                             "pwm_cycle_duration": "PWM cycle duration",
                             "tpi_coef_int": "TPI internal coefficient",
                             "tpi_coef_ext": "TPI external coefficient",
-                            "ai_initial_heating_power": "AI initial heating power"
+                            "ai_initial_heating_power": "AI initial heating power",
+                            "valve_maintenance": "Valve maintenance (anti-stick)",
+                            "valve_maintenance_interval": "Valve maintenance interval"
                         },
                         "data_description": {
                             "cold_tolerance": "Minimum temperature difference between sensor reading and target before turning on heating. For example, if target is 25°C and tolerance is 0.5°C, heater starts when sensor reaches 24.5°C or below (default: 0.3°C).",
@@ -99,7 +101,9 @@
                             "pwm_cycle_duration": "Length of one PWM cycle for TPI control (seconds). The switch is on for duty × cycle, then off for the rest. Longer cycles suit slow/high-mass systems (default: 1800 s).",
                             "tpi_coef_int": "TPI weight on the room error (target − current). Higher reacts more strongly to temperature difference (default: 0.6).",
                             "tpi_coef_ext": "TPI weight on the outdoor gradient (target − outdoor), compensating for heat loss. Needs an outside sensor (default: 0.01).",
-                            "ai_initial_heating_power": "AI Time Based only: starting estimate of heating power in °C/min before the model has learned. Learning refines this over 2-3 days (default: 0.01)."
+                            "ai_initial_heating_power": "AI Time Based only: starting estimate of heating power in °C/min before the model has learned. Learning refines this over 2-3 days (default: 0.01).",
+                            "valve_maintenance": "Periodically exercise the heater valve (open/close pulses) even when heating is off, so it does not seize during summer.",
+                            "valve_maintenance_interval": "How often to run the valve maintenance cycle, in days (default: 7)."
                         }
                     }
                 }
@@ -197,7 +201,9 @@
                             "pwm_cycle_duration": "PWM cycle duration",
                             "tpi_coef_int": "TPI internal coefficient",
                             "tpi_coef_ext": "TPI external coefficient",
-                            "ai_initial_heating_power": "AI initial heating power"
+                            "ai_initial_heating_power": "AI initial heating power",
+                            "valve_maintenance": "Valve maintenance (anti-stick)",
+                            "valve_maintenance_interval": "Valve maintenance interval"
                         },
                         "data_description": {
                             "cold_tolerance": "Minimum temperature difference between sensor reading and target before activating heating or deactivating cooling. For example, if target is 25°C and tolerance is 0.5°C, changes occur when sensor reaches 24.5°C or below (default: 0.3°C).",
@@ -209,7 +215,9 @@
                             "pwm_cycle_duration": "Length of one PWM cycle for TPI control (seconds). The switch is on for duty × cycle, then off for the rest. Longer cycles suit slow/high-mass systems (default: 1800 s).",
                             "tpi_coef_int": "TPI weight on the room error (target − current). Higher reacts more strongly to temperature difference (default: 0.6).",
                             "tpi_coef_ext": "TPI weight on the outdoor gradient (target − outdoor), compensating for heat loss. Needs an outside sensor (default: 0.01).",
-                            "ai_initial_heating_power": "AI Time Based only: starting estimate of heating power in °C/min before the model has learned. Learning refines this over 2-3 days (default: 0.01)."
+                            "ai_initial_heating_power": "AI Time Based only: starting estimate of heating power in °C/min before the model has learned. Learning refines this over 2-3 days (default: 0.01).",
+                            "valve_maintenance": "Periodically exercise the heater valve (open/close pulses) even when heating is off, so it does not seize during summer.",
+                            "valve_maintenance_interval": "How often to run the valve maintenance cycle, in days (default: 7)."
                         }
                     }
                 }

@@ -65,8 +65,11 @@ from .const import (
     CONF_TEMP_STEP,
     CONF_TPI_COEF_EXT,
     CONF_TPI_COEF_INT,
+    CONF_VALVE_MAINTENANCE,
+    CONF_VALVE_MAINTENANCE_INTERVAL,
     DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
+    DEFAULT_VALVE_MAINTENANCE_INTERVAL,
     SYSTEM_TYPES,
     HeaterControlMode,
     SystemType,
@@ -373,6 +376,22 @@ def get_heating_control_fields(
             default=defaults.get(CONF_AI_INITIAL_HEATING_POWER, DEFAULT_HEATING_POWER),
         )
     ] = get_number_selector(min_value=0.005, max_value=0.2, step=0.001)
+
+    fields[
+        vol.Optional(
+            CONF_VALVE_MAINTENANCE,
+            default=defaults.get(CONF_VALVE_MAINTENANCE, False),
+        )
+    ] = get_boolean_selector()
+
+    fields[
+        vol.Optional(
+            CONF_VALVE_MAINTENANCE_INTERVAL,
+            default=defaults.get(
+                CONF_VALVE_MAINTENANCE_INTERVAL, DEFAULT_VALVE_MAINTENANCE_INTERVAL
+            ),
+        )
+    ] = get_number_selector(min_value=1, max_value=60, step=1, unit_of_measurement="d")
 
     return fields
 
