@@ -57,16 +57,26 @@ WRAPPED_ATTRS = {
 }
 
 
-def _setup_wrapped_ac(hass: HomeAssistant, hvac_mode: str = HVACMode.OFF):
-    """Register a fake climate entity and capture commands sent to it.
+def _set_ac_state(hass: HomeAssistant, hvac_mode: str = HVACMode.OFF) -> None:
+    """Seed the fake climate entity state (must be done before thermostat setup).
 
-    The fake handlers also update the entity state so the thermostat's
-    "is the AC running?" feedback (and fan/swing readback) works realistically.
-
-    Returns a dict of captured service-call lists keyed by service name.
+    The device detects fan/swing/temperature capabilities from this state during
+    its ``__init__``, so it has to exist before the climate platform is set up.
     """
     hass.states.async_set(WRAPPED_AC, hvac_mode, dict(WRAPPED_ATTRS))
 
+
+def _register_ac_handlers(hass: HomeAssistant):
+    """Register fake climate services that capture and apply commands.
+
+    Must be called AFTER the thermostat's climate platform is set up: the
+    platform registers real entity-services for the climate domain, and these
+    fake handlers intentionally override them so calls to the (unregistered)
+    ``climate.test_ac`` entity are captured and reflected back into its state
+    instead of being dropped as "missing or not currently available".
+
+    Returns a dict of captured service-call lists keyed by service name.
+    """
     calls = {
         SERVICE_SET_HVAC_MODE: [],
         SERVICE_SET_TEMPERATURE: [],
@@ -113,6 +123,16 @@ def _setup_wrapped_ac(hass: HomeAssistant, hvac_mode: str = HVACMode.OFF):
     return calls
 
 
+async def _setup_full(hass: HomeAssistant, target_temp: float = 22):
+    """Seed AC state, set up the thermostat, then register the fake AC services.
+
+    Returns the captured-calls dict from :func:`_register_ac_handlers`.
+    """
+    _set_ac_state(hass)
+    await _setup_thermostat(hass, target_temp=target_temp)
+    return _register_ac_handlers(hass)
+
+
 async def _setup_thermostat(hass: HomeAssistant, target_temp: float = 22) -> None:
     hass.config.units = METRIC_SYSTEM
     assert await async_setup_component(
@@ -143,8 +163,7 @@ async def _setup_thermostat(hass: HomeAssistant, target_temp: float = 22) -> Non
 @pytest.mark.asyncio
 async def test_wrapped_climate_cooling_commands_hvac_mode(hass: HomeAssistant) -> None:
     """When cooling is needed the wrapped climate entity is told to cool."""
-    calls = _setup_wrapped_ac(hass)
-    await _setup_thermostat(hass, target_temp=22)
+    calls = await _setup_full(hass, target_temp=22)
 
     # Room is hotter than target + tolerance -> needs cooling.
     setup_sensor(hass, 26)
@@ -163,8 +182,7 @@ async def test_wrapped_climate_cooling_commands_hvac_mode(hass: HomeAssistant) -
 @pytest.mark.asyncio
 async def test_wrapped_climate_passes_target_temperature(hass: HomeAssistant) -> None:
     """The thermostat's target temperature is passed through to the wrapped AC."""
-    calls = _setup_wrapped_ac(hass)
-    await _setup_thermostat(hass, target_temp=21)
+    calls = await _setup_full(hass, target_temp=21)
 
     setup_sensor(hass, 26)
     await hass.async_block_till_done()
@@ -183,8 +201,7 @@ async def test_wrapped_climate_turns_off_when_goal_reached(
     hass: HomeAssistant,
 ) -> None:
     """When the room cools below target the wrapped AC is turned off."""
-    calls = _setup_wrapped_ac(hass)
-    await _setup_thermostat(hass, target_temp=22)
+    calls = await _setup_full(hass, target_temp=22)
 
     # First make it cool.
     setup_sensor(hass, 26)
@@ -213,8 +230,7 @@ async def test_wrapped_climate_off_mode_turns_off_ac(hass: HomeAssistant) -> Non
     ``climate.set_hvac_mode`` service, because the fake AC handler in this test
     intercepts that service for the (shared) climate domain.
     """
-    _setup_wrapped_ac(hass)
-    await _setup_thermostat(hass, target_temp=22)
+    await _setup_full(hass, target_temp=22)
 
     setup_sensor(hass, 26)
     await hass.async_block_till_done()
@@ -230,8 +246,7 @@ async def test_wrapped_climate_off_mode_turns_off_ac(hass: HomeAssistant) -> Non
 @pytest.mark.asyncio
 async def test_wrapped_climate_exposes_fan_and_swing(hass: HomeAssistant) -> None:
     """The thermostat surfaces the wrapped AC's fan and swing capabilities."""
-    _setup_wrapped_ac(hass)
-    await _setup_thermostat(hass, target_temp=22)
+    await _setup_full(hass, target_temp=22)
 
     state = hass.states.get("climate.test")
     assert state.attributes.get(ATTR_FAN_MODES) == ["auto", "low", "high"]
@@ -245,8 +260,7 @@ async def test_wrapped_climate_exposes_fan_and_swing(hass: HomeAssistant) -> Non
 @pytest.mark.asyncio
 async def test_wrapped_climate_fan_mode_passthrough(hass: HomeAssistant) -> None:
     """Setting a fan mode is passed through to the wrapped AC."""
-    calls = _setup_wrapped_ac(hass)
-    await _setup_thermostat(hass, target_temp=22)
+    calls = await _setup_full(hass, target_temp=22)
 
     thermostat = hass.data["entity_components"][CLIMATE].get_entity("climate.test")
     await thermostat.async_set_fan_mode("high")
@@ -265,8 +279,7 @@ async def test_wrapped_climate_fan_mode_passthrough(hass: HomeAssistant) -> None
 @pytest.mark.asyncio
 async def test_wrapped_climate_swing_mode_passthrough(hass: HomeAssistant) -> None:
     """Setting a swing mode is passed through to the wrapped AC."""
-    calls = _setup_wrapped_ac(hass)
-    await _setup_thermostat(hass, target_temp=22)
+    calls = await _setup_full(hass, target_temp=22)
 
     thermostat = hass.data["entity_components"][CLIMATE].get_entity("climate.test")
     await thermostat.async_set_swing_mode("vertical")
@@ -289,7 +302,7 @@ async def test_wrapped_climate_capabilities_detected(hass: HomeAssistant) -> Non
         WrappedClimateDevice,
     )
 
-    _setup_wrapped_ac(hass)
+    _set_ac_state(hass)
 
     detected = {}
 
