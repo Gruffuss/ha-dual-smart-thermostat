@@ -145,6 +145,7 @@ from .const import (
     DEFAULT_VALVE_MAINTENANCE_INTERVAL,
     MIN_CYCLE_KEEP_ALIVE,
     SERVICE_RESET_HEATING_POWER,
+    SERVICE_RUN_VALVE_MAINTENANCE,
     SET_HVAC_ACTION_REASON_SENSOR_SIGNAL,
     TIMED_OPENING_SCHEMA,
     HeaterControlMode,
@@ -540,6 +541,12 @@ async def _async_setup_config(
         SERVICE_RESET_HEATING_POWER,
         {},
         "async_reset_heating_power",
+    )
+    # Entity service to run a valve maintenance cycle on demand.
+    platform.async_register_entity_service(
+        SERVICE_RUN_VALVE_MAINTENANCE,
+        {},
+        "async_run_valve_maintenance",
     )
 
     # Service to set HVACActionReason.
@@ -1268,6 +1275,29 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             pwm_heater.reset_learning()
             _LOGGER.info("Reset AI heating power learning for %s", self.entity_id)
             self.async_write_ha_state()
+
+    async def async_run_valve_maintenance(self) -> None:
+        """Service: run a valve maintenance cycle on demand.
+
+        Works whether or not scheduled maintenance is enabled, as long as a
+        heater switch is configured. A transient manager is used when scheduled
+        maintenance is off so the cycle still suspends control and restores the
+        prior switch state.
+        """
+        if not self._valve_maintenance_entity:
+            _LOGGER.warning("Cannot run valve maintenance: no heater switch configured")
+            return
+
+        manager = self._valve_maintenance_manager
+        if manager is None:
+            manager = ValveMaintenanceManager(
+                self.hass,
+                self._valve_maintenance_entity,
+                self._valve_maintenance_interval,
+                self._set_valve_maintenance_active,
+            )
+        await manager.async_run_cycle()
+        self.async_write_ha_state()
 
     @property
     def extra_state_attributes(self) -> dict:

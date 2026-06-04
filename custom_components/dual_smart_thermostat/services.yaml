@@ -30,3 +30,13 @@ reset_heating_power:
   target:
     entity:
       domain: climate
+
+run_valve_maintenance:
+  name: Run valve maintenance now
+  description: >-
+    Immediately run a valve maintenance cycle (open/close pulses, then restore
+    the prior state) on the heater switch. Works even when scheduled valve
+    maintenance is disabled.
+  target:
+    entity:
+      domain: climate
