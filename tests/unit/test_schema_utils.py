@@ -10,13 +10,53 @@ import pytest
 
 from custom_components.dual_smart_thermostat.const import (
     CONF_COLD_TOLERANCE,
+    CONF_COOLER,
     CONF_HOT_TOLERANCE,
 )
 from custom_components.dual_smart_thermostat.schema_utils import (
     get_temperature_selector,
     get_tolerance_selector,
 )
-from custom_components.dual_smart_thermostat.schemas import get_core_schema
+from custom_components.dual_smart_thermostat.schemas import (
+    get_core_schema,
+    get_heater_cooler_schema,
+)
+
+
+def _cooler_domains(schema):
+    """Extract the allowed domains for the cooler entity selector in a schema."""
+    for key, value in schema.schema.items():
+        if hasattr(key, "schema") and key.schema == CONF_COOLER:
+            domains = value.config.get("domain")
+            if isinstance(domains, str):
+                return [domains]
+            return domains
+    return None
+
+
+class TestCoolerSelectorAllowsClimate:
+    """The cooler selector must allow climate entities (wrapped split AC)."""
+
+    def test_core_schema_cooler_allows_climate(self):
+        """get_core_schema (options/reconfigure) allows a climate cooler."""
+        hass = MagicMock()
+        hass.config.units.temperature_unit = UnitOfTemperature.CELSIUS
+
+        schema = get_core_schema("heater_cooler", defaults={}, hass=hass)
+        domains = _cooler_domains(schema)
+
+        assert domains is not None, "cooler field not found in core schema"
+        assert "climate" in domains
+        assert "switch" in domains  # existing switch support preserved
+
+    def test_heater_cooler_schema_cooler_allows_climate(self):
+        """get_heater_cooler_schema (config flow) allows a climate cooler."""
+        schema = get_heater_cooler_schema(defaults={})
+        domains = _cooler_domains(schema)
+
+        assert domains is not None, "cooler field not found in heater_cooler schema"
+        assert "climate" in domains
+        assert "switch" in domains
 
 
 class TestGetToleranceSelector:

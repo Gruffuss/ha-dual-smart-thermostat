@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.components.climate import (
     PLATFORM_SCHEMA,
     ClimateEntity,
+    ClimateEntityFeature,
     HVACAction,
     HVACMode,
 )
@@ -75,6 +76,7 @@ from .const import (
     ATTR_PREV_TARGET,
     ATTR_PREV_TARGET_HIGH,
     ATTR_PREV_TARGET_LOW,
+    ATTR_SWING_MODE,
     CONF_AC_MODE,
     CONF_AUTO_OUTSIDE_DELTA_BOOST,
     CONF_AUX_HEATER,
@@ -1150,6 +1152,23 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         return self.features.fan_modes
 
     @property
+    def swing_mode(self) -> str | None:
+        """Return the current swing mode of a wrapped climate entity."""
+        if not self.features.supports_swing_mode:
+            return None
+        swing_device = self.features.swing_device
+        if swing_device is None:
+            return None
+        return swing_device.current_swing_mode
+
+    @property
+    def swing_modes(self) -> list[str] | None:
+        """Return the list of available swing modes."""
+        if not self.features.supports_swing_mode:
+            return None
+        return self.features.swing_modes
+
+    @property
     def extra_state_attributes(self) -> dict:
         """Return entity specific state attributes to be saved."""
 
@@ -1187,6 +1206,10 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         # Add fan mode to state attributes for persistence
         if self.features.supports_fan_mode and self.fan_mode is not None:
             attributes[ATTR_FAN_MODE] = self.fan_mode
+
+        # Add swing mode to state attributes for persistence
+        if self.features.supports_swing_mode and self.swing_mode is not None:
+            attributes[ATTR_SWING_MODE] = self.swing_mode
 
         # TODO: set these only if configured to avoid unnecessary DB writes
         if self.features.is_configured_for_hvac_power_levels:
@@ -1375,6 +1398,22 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             return
 
         await fan_device.async_set_fan_mode(fan_mode)
+        self.async_write_ha_state()
+
+    async def async_set_swing_mode(self, swing_mode: str) -> None:
+        """Set new swing mode on a wrapped climate entity."""
+        if not self.features.supports_swing_mode:
+            _LOGGER.warning("Cannot set swing mode: device does not support swing")
+            return
+
+        _LOGGER.info("Setting swing mode: %s", swing_mode)
+
+        swing_device = self.features.swing_device
+        if swing_device is None:
+            _LOGGER.warning("Cannot set swing mode: swing device not found")
+            return
+
+        await swing_device.async_set_swing_mode(swing_mode)
         self.async_write_ha_state()
 
     def _set_temperatures_dual_mode(self, temperatures: TargetTemperatures) -> None:
@@ -1789,7 +1828,33 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         """Handle heater switch state changes."""
 
         data = event.data
-        self._async_switch_changed(data["old_state"], data["new_state"])
+        new_state = data["new_state"]
+
+        # Forward to the device so capability-aware devices (e.g. a wrapped
+        # climate cooler) can refresh fan/swing/temperature capabilities — for
+        # instance when the wrapped entity was unavailable at startup and later
+        # comes online. Every device's on_entity_state_changed is entity-id
+        # guarded, so this is a no-op for devices that don't own this entity.
+        if new_state is not None:
+            self.hvac_device.on_entity_state_changed(data["entity_id"], new_state)
+            self._refresh_passthrough_support_flags()
+
+        self._async_switch_changed(data["old_state"], new_state)
+
+    @callback
+    def _refresh_passthrough_support_flags(self) -> None:
+        """Add fan/swing feature bits exposed by a wrapped climate cooler.
+
+        A wrapped climate entity's capabilities may only become known after
+        startup (it was unavailable when Home Assistant started). This adds the
+        relevant feature bits without the side effects of a full support-flag
+        recompute (which can reset target temperatures). Bits are only added,
+        never removed.
+        """
+        if self.features.supports_fan_mode:
+            self._attr_supported_features |= ClimateEntityFeature.FAN_MODE
+        if self.features.supports_swing_mode:
+            self._attr_supported_features |= ClimateEntityFeature.SWING_MODE
 
     @callback
     def _async_switch_changed(

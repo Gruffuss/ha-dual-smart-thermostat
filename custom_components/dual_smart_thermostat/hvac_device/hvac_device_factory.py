@@ -1,6 +1,7 @@
 from datetime import timedelta
 import logging
 
+from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
@@ -27,6 +28,7 @@ from ..hvac_device.heater_aux_heater_device import HeaterAUXHeaterDevice
 from ..hvac_device.heater_cooler_device import HeaterCoolerDevice
 from ..hvac_device.heater_device import HeaterDevice
 from ..hvac_device.multi_hvac_device import MultiHvacDevice
+from ..hvac_device.wrapped_climate_device import WrappedClimateDevice
 from ..managers.environment_manager import EnvironmentManager
 from ..managers.feature_manager import FeatureManager
 from ..managers.hvac_power_manager import HvacPowerManager
@@ -205,6 +207,18 @@ class HVACDeviceFactory:
         if fan_device:
             self._features.set_fan_device(fan_device)
 
+        # A wrapped climate cooler (e.g. a split AC) exposes its own fan speed
+        # and swing; surface those through the feature manager so the thermostat
+        # can pass them through. Register it unconditionally: capability is read
+        # dynamically from the device, so it reflects the wrapped entity even if
+        # the entity was unavailable when the device was built (the feature
+        # manager then reports no fan/swing until the entity comes online). Only
+        # use it as the fan device when there is no dedicated fan entity.
+        if isinstance(cooler_device, WrappedClimateDevice):
+            if fan_device is None:
+                self._features.set_fan_device(cooler_device)
+            self._features.set_swing_device(cooler_device)
+
         if heater_device is not None and cooler_device is not None:
             _LOGGER.info("Creating heater cooler device")
             heater_cooler_device = HeaterCoolerDevice(
@@ -272,6 +286,25 @@ class HVACDeviceFactory:
         fan_device: FanDevice | None,
     ) -> CoolerDevice:
 
+        # When the cooler is a real `climate` entity (e.g. a split AC) delegate
+        # control to it instead of toggling a switch. The wrapped entity already
+        # exposes its own fan/swing, so it is not combined with a separate fan
+        # device.
+        if self._is_climate_entity(cooler_entitiy_id):
+            _LOGGER.info(
+                "Creating wrapped climate cooler device for %s", cooler_entitiy_id
+            )
+            return WrappedClimateDevice(
+                self.hass,
+                cooler_entitiy_id,
+                self._min_cycle_duration,
+                self._initial_hvac_mode,
+                environment,
+                openings,
+                self._features,
+                hvac_power,
+            )
+
         cooler_device = CoolerDevice(
             self.hass,
             cooler_entitiy_id,
@@ -294,3 +327,8 @@ class HVACDeviceFactory:
             )
 
         return cooler_device
+
+    @staticmethod
+    def _is_climate_entity(entity_id: str | None) -> bool:
+        """Return True if the entity_id belongs to the climate domain."""
+        return bool(entity_id) and entity_id.split(".")[0] == CLIMATE_DOMAIN

@@ -470,3 +470,78 @@ class TestHeaterCoolerOptionsFlow:
         # Verify updated runtime parameters
         assert flow.collected_config[CONF_COLD_TOLERANCE] == 0.5
         assert flow.collected_config[CONF_HOT_TOLERANCE] == 0.5
+
+
+class TestHeaterCoolerClimateCooler:
+    """Test using a climate entity (e.g. a split AC) as the cooler."""
+
+    async def test_cooler_selector_allows_climate_domain(self, mock_hass):
+        """The heater_cooler cooler selector must accept climate entities.
+
+        This is the config-flow surface for wrapping a real climate entity (a
+        Gree split AC) as the cooler instead of an on/off switch.
+        """
+        flow = ConfigFlowHandler()
+        flow.hass = mock_hass
+        flow.collected_config = {CONF_SYSTEM_TYPE: SYSTEM_TYPE_HEATER_COOLER}
+
+        result = await flow.async_step_heater_cooler()
+        schema = result["data_schema"].schema
+
+        cooler_selector = None
+        for key, value in schema.items():
+            if getattr(key, "schema", None) == CONF_COOLER:
+                cooler_selector = value
+                break
+
+        assert cooler_selector is not None, "cooler field missing from schema"
+
+        # EntitySelector stores its config (incl. allowed domains) on .config
+        domains = cooler_selector.config.get("domain")
+        # domain may be a single string or a list of strings
+        if isinstance(domains, str):
+            domains = [domains]
+        assert "climate" in domains, f"climate domain not allowed in cooler: {domains}"
+        # Existing switch support must remain
+        assert "switch" in domains
+
+    async def test_config_flow_accepts_climate_cooler(self, mock_hass):
+        """A climate entity can be saved as the cooler and the flow proceeds."""
+        flow = ConfigFlowHandler()
+        flow.hass = mock_hass
+        flow.collected_config = {CONF_SYSTEM_TYPE: SYSTEM_TYPE_HEATER_COOLER}
+
+        heater_cooler_input = {
+            CONF_NAME: "Living Room",
+            CONF_SENSOR: "sensor.living_room_temp",
+            CONF_HEATER: "switch.underfloor_valve",
+            CONF_COOLER: "climate.living_room_ac",
+            CONF_HEAT_COOL_MODE: False,
+        }
+
+        result = await flow.async_step_heater_cooler(heater_cooler_input)
+
+        # Should proceed to the features step and persist the climate cooler.
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "features"
+        assert flow.collected_config[CONF_COOLER] == "climate.living_room_ac"
+        assert flow.collected_config[CONF_HEATER] == "switch.underfloor_valve"
+
+    async def test_validation_same_heater_climate_cooler(self, mock_hass):
+        """Heater and cooler being the same entity still errors with a climate cooler."""
+        flow = ConfigFlowHandler()
+        flow.hass = mock_hass
+        flow.collected_config = {CONF_SYSTEM_TYPE: SYSTEM_TYPE_HEATER_COOLER}
+
+        heater_cooler_input = {
+            CONF_NAME: "Test",
+            CONF_SENSOR: "sensor.temp",
+            CONF_HEATER: "climate.living_room_ac",
+            CONF_COOLER: "climate.living_room_ac",
+        }
+
+        result = await flow.async_step_heater_cooler(heater_cooler_input)
+
+        assert result["type"] == FlowResultType.FORM
+        assert "errors" in result
+        assert "base" in result["errors"] or CONF_COOLER in result["errors"]

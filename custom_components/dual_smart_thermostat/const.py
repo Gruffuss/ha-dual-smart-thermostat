@@ -79,6 +79,10 @@ CONF_FAN_AIR_OUTSIDE = "fan_air_outside"
 ATTR_FAN_MODE = "fan_mode"
 ATTR_FAN_MODES = "fan_modes"
 
+# Swing control (passed through to a wrapped climate entity)
+ATTR_SWING_MODE = "swing_mode"
+ATTR_SWING_MODES = "swing_modes"
+
 # Fan mode to percentage mappings for percentage-based fan entities (using fan.set_percentage service)
 # Note: Both "auto" and "high" map to 100%. Reading 100% returns "high" as the canonical mode.
 FAN_MODE_TO_PERCENTAGE = {
