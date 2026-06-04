@@ -39,6 +39,7 @@ from .const import (
     CONF_HEAT_PUMP_COOLING,
     CONF_HEAT_TOLERANCE,
     CONF_HEATER,
+    CONF_HEATER_CONTROL_MODE,
     CONF_HOT_TOLERANCE,
     CONF_HUMIDITY_SENSOR,
     CONF_KEEP_ALIVE,
@@ -53,6 +54,7 @@ from .const import (
     CONF_OUTSIDE_SENSOR,
     CONF_PRECISION,
     CONF_PRESETS,
+    CONF_PWM_CYCLE_DURATION,
     CONF_SENSOR,
     CONF_SYSTEM_TYPE,
     CONF_TARGET_HUMIDITY,
@@ -60,14 +62,20 @@ from .const import (
     CONF_TARGET_TEMP_HIGH,
     CONF_TARGET_TEMP_LOW,
     CONF_TEMP_STEP,
+    CONF_TPI_COEF_EXT,
+    CONF_TPI_COEF_INT,
+    DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
     SYSTEM_TYPES,
+    HeaterControlMode,
     SystemType,
 )
+from .control.tpi import DEFAULT_COEF_EXT, DEFAULT_COEF_INT
 from .schema_utils import (
     get_boolean_selector,
     get_entity_selector,
     get_multi_select_selector,
+    get_number_selector,
     get_percentage_selector,
     get_select_selector,
     get_temperature_selector,
@@ -308,6 +316,57 @@ def get_timing_fields_for_section(
     return schema_dict
 
 
+def get_heating_control_fields(
+    defaults: dict[str, Any] | None = None,
+) -> dict[Any, Any]:
+    """Heater control-mode fields (bang-bang vs TPI/PWM) for the advanced section.
+
+    ``pwm_cycle_duration`` and the TPI coefficients only take effect when the
+    control mode is ``tpi``; they are shown alongside it for convenience.
+    """
+    defaults = defaults or {}
+    fields: dict[Any, Any] = {}
+
+    fields[
+        vol.Optional(
+            CONF_HEATER_CONTROL_MODE,
+            default=defaults.get(
+                CONF_HEATER_CONTROL_MODE, HeaterControlMode.BANG_BANG.value
+            ),
+        )
+    ] = get_select_selector(
+        [
+            {"value": HeaterControlMode.BANG_BANG.value, "label": "Bang-bang (on/off)"},
+            {"value": HeaterControlMode.TPI.value, "label": "TPI (time-proportional)"},
+        ]
+    )
+
+    fields[
+        vol.Optional(
+            CONF_PWM_CYCLE_DURATION,
+            default=defaults.get(CONF_PWM_CYCLE_DURATION, DEFAULT_PWM_CYCLE_DURATION),
+        )
+    ] = get_number_selector(
+        min_value=60, max_value=3600, step=30, unit_of_measurement="s"
+    )
+
+    fields[
+        vol.Optional(
+            CONF_TPI_COEF_INT,
+            default=defaults.get(CONF_TPI_COEF_INT, DEFAULT_COEF_INT),
+        )
+    ] = get_number_selector(min_value=0, max_value=5, step=0.01)
+
+    fields[
+        vol.Optional(
+            CONF_TPI_COEF_EXT,
+            default=defaults.get(CONF_TPI_COEF_EXT, DEFAULT_COEF_EXT),
+        )
+    ] = get_number_selector(min_value=0, max_value=5, step=0.001)
+
+    return fields
+
+
 def get_basic_ac_schema(hass=None, defaults=None, include_name=True):
     """Get AC-only configuration schema with advanced settings in collapsible section."""
     defaults = defaults or {}
@@ -399,9 +458,10 @@ def get_simple_heater_schema(hass=None, defaults=None, include_name=True):
     timing_fields = get_timing_fields_for_section(
         defaults=defaults, include_keep_alive=False
     )
-    if timing_fields:
+    advanced_fields = {**timing_fields, **get_heating_control_fields(defaults)}
+    if advanced_fields:
         core_schema[vol.Optional("advanced_settings")] = section(
-            vol.Schema(timing_fields), {"collapsed": True}
+            vol.Schema(advanced_fields), {"collapsed": True}
         )
 
     return vol.Schema(core_schema)
@@ -466,9 +526,10 @@ def get_heater_cooler_schema(hass=None, defaults=None, include_name=True):
     timing_fields = get_timing_fields_for_section(
         defaults=defaults, include_keep_alive=False
     )
-    if timing_fields:
+    advanced_fields = {**timing_fields, **get_heating_control_fields(defaults)}
+    if advanced_fields:
         core_schema[vol.Optional("advanced_settings")] = section(
-            vol.Schema(timing_fields), {"collapsed": True}
+            vol.Schema(advanced_fields), {"collapsed": True}
         )
 
     return vol.Schema(core_schema)
@@ -881,6 +942,10 @@ def get_core_schema(
         )
     else:
         schema_dict[vol.Optional(CONF_MIN_DUR)] = get_time_selector()
+
+    # Heater control mode (TPI/PWM) for system types that drive a heater switch.
+    if system_type in ("simple_heater", "heater_cooler"):
+        schema_dict.update(get_heating_control_fields(defaults))
 
     return vol.Schema(schema_dict)
 

@@ -11,7 +11,11 @@ import pytest
 from custom_components.dual_smart_thermostat.const import (
     CONF_COLD_TOLERANCE,
     CONF_COOLER,
+    CONF_HEATER_CONTROL_MODE,
     CONF_HOT_TOLERANCE,
+    CONF_PWM_CYCLE_DURATION,
+    CONF_TPI_COEF_EXT,
+    CONF_TPI_COEF_INT,
 )
 from custom_components.dual_smart_thermostat.schema_utils import (
     get_temperature_selector,
@@ -20,7 +24,13 @@ from custom_components.dual_smart_thermostat.schema_utils import (
 from custom_components.dual_smart_thermostat.schemas import (
     get_core_schema,
     get_heater_cooler_schema,
+    get_heating_control_fields,
 )
+
+
+def _schema_keys(schema):
+    """Return the field names present in a vol.Schema."""
+    return [k.schema for k in schema.schema if hasattr(k, "schema")]
 
 
 def _cooler_domains(schema):
@@ -358,3 +368,53 @@ class TestGetCoreSchemaToleranceSelectors:
             f"got {cold_tol_selector.config.get('min')}. "
             "A min of 32 indicates incorrect absolute temperature conversion."
         )
+
+
+class TestHeatingControlFields:
+    """TPI/PWM heater control fields appear in the right schemas."""
+
+    def test_heating_control_fields_present(self):
+        fields = get_heating_control_fields({})
+        keys = [k.schema for k in fields if hasattr(k, "schema")]
+        assert CONF_HEATER_CONTROL_MODE in keys
+        assert CONF_PWM_CYCLE_DURATION in keys
+        assert CONF_TPI_COEF_INT in keys
+        assert CONF_TPI_COEF_EXT in keys
+
+    def test_heating_control_fields_prefill_defaults(self):
+        fields = get_heating_control_fields(
+            {CONF_HEATER_CONTROL_MODE: "tpi", CONF_TPI_COEF_INT: 0.9}
+        )
+        defaults = {
+            k.schema: k.default() if callable(k.default) else k.default
+            for k in fields
+            if hasattr(k, "schema") and hasattr(k, "default")
+        }
+        assert defaults[CONF_HEATER_CONTROL_MODE] == "tpi"
+        assert defaults[CONF_TPI_COEF_INT] == 0.9
+
+    @pytest.mark.parametrize("system_type", ["simple_heater", "heater_cooler"])
+    def test_core_schema_includes_control_mode_for_heater_types(self, system_type):
+        hass = MagicMock()
+        hass.config.units.temperature_unit = UnitOfTemperature.CELSIUS
+        schema = get_core_schema(system_type, defaults={}, hass=hass)
+        assert CONF_HEATER_CONTROL_MODE in _schema_keys(schema)
+
+    def test_core_schema_excludes_control_mode_for_heat_pump(self):
+        hass = MagicMock()
+        hass.config.units.temperature_unit = UnitOfTemperature.CELSIUS
+        schema = get_core_schema("heat_pump", defaults={}, hass=hass)
+        assert CONF_HEATER_CONTROL_MODE not in _schema_keys(schema)
+
+    def test_heater_cooler_schema_has_control_mode_in_advanced(self):
+        schema = get_heater_cooler_schema(defaults={})
+        # heater_control_mode lives inside the advanced_settings section.
+        advanced = None
+        for key, value in schema.schema.items():
+            if getattr(key, "schema", None) == "advanced_settings":
+                advanced = value
+        assert advanced is not None, "advanced_settings section missing"
+        section_keys = [
+            k.schema for k in advanced.schema.schema if hasattr(k, "schema")
+        ]
+        assert CONF_HEATER_CONTROL_MODE in section_keys
