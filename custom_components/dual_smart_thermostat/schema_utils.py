@@ -151,6 +151,24 @@ def get_percentage_selector(
     )
 
 
+def get_number_selector(
+    min_value: float,
+    max_value: float,
+    step: float = 1.0,
+    unit_of_measurement: str | None = None,
+) -> selector.NumberSelector:
+    """Get a standardized numeric (box) selector."""
+    config = selector.NumberSelectorConfig(
+        min=min_value,
+        max=max_value,
+        step=step,
+        mode=selector.NumberSelectorMode.BOX,
+    )
+    if unit_of_measurement is not None:
+        config["unit_of_measurement"] = unit_of_measurement
+    return selector.NumberSelector(config)
+
+
 def get_time_selector(
     min_value: int = 0,
     max_value: int = 3600,

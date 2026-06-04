@@ -46,7 +46,7 @@ from homeassistant.core import (
     State,
     callback,
 )
-from homeassistant.helpers import discovery
+from homeassistant.helpers import discovery, entity_platform
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -67,6 +67,9 @@ from .config_validation import validate_config_with_models
 from .const import (
     ATTR_CLOSING_TIMEOUT,
     ATTR_FAN_MODE,
+    ATTR_HEAT_LOSS,
+    ATTR_HEATER_DUTY_CYCLE,
+    ATTR_HEATING_POWER,
     ATTR_HVAC_ACTION_REASON,
     ATTR_HVAC_POWER_LEVEL,
     ATTR_HVAC_POWER_PERCENT,
@@ -78,6 +81,7 @@ from .const import (
     ATTR_PREV_TARGET_LOW,
     ATTR_SWING_MODE,
     CONF_AC_MODE,
+    CONF_AI_INITIAL_HEATING_POWER,
     CONF_AUTO_OUTSIDE_DELTA_BOOST,
     CONF_AUX_HEATER,
     CONF_AUX_HEATING_DUAL_MODE,
@@ -98,6 +102,7 @@ from .const import (
     CONF_HEAT_PUMP_COOLING,
     CONF_HEAT_TOLERANCE,
     CONF_HEATER,
+    CONF_HEATER_CONTROL_MODE,
     CONF_HOT_TOLERANCE,
     CONF_HUMIDITY_SENSOR,
     CONF_HVAC_POWER_LEVELS,
@@ -120,6 +125,7 @@ from .const import (
     CONF_PRECISION,
     CONF_PRESETS,
     CONF_PRESETS_OLD,
+    CONF_PWM_CYCLE_DURATION,
     CONF_SENSOR,
     CONF_STALE_DURATION,
     CONF_TARGET_HUMIDITY,
@@ -127,13 +133,21 @@ from .const import (
     CONF_TARGET_TEMP_HIGH,
     CONF_TARGET_TEMP_LOW,
     CONF_TEMP_STEP,
+    CONF_TPI_COEF_EXT,
+    CONF_TPI_COEF_INT,
     CONF_USE_APPARENT_TEMP,
+    CONF_VALVE_MAINTENANCE,
+    CONF_VALVE_MAINTENANCE_INTERVAL,
     DEFAULT_MAX_FLOOR_TEMP,
     DEFAULT_NAME,
+    DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
+    DEFAULT_VALVE_MAINTENANCE_INTERVAL,
     MIN_CYCLE_KEEP_ALIVE,
+    SERVICE_RESET_HEATING_POWER,
     SET_HVAC_ACTION_REASON_SENSOR_SIGNAL,
     TIMED_OPENING_SCHEMA,
+    HeaterControlMode,
 )
 from .hvac_action_reason.hvac_action_reason import (
     SERVICE_SET_HVAC_ACTION_REASON,
@@ -141,14 +155,17 @@ from .hvac_action_reason.hvac_action_reason import (
     HVACActionReason,
 )
 from .hvac_action_reason.hvac_action_reason_external import HVACActionReasonExternal
+from .hvac_device.ai_heater_device import AiHeaterDevice
 from .hvac_device.controllable_hvac_device import ControlableHVACDevice
 from .hvac_device.hvac_device_factory import HVACDeviceFactory
+from .hvac_device.pwm_heater_device import PwmHeaterDevice
 from .managers.auto_mode_evaluator import AutoDecision, AutoModeEvaluator
 from .managers.environment_manager import EnvironmentManager, TargetTemperatures
 from .managers.feature_manager import FeatureManager
 from .managers.hvac_power_manager import HvacPowerManager
 from .managers.opening_manager import OpeningHvacModeScope, OpeningManager
 from .managers.preset_manager import PresetManager
+from .managers.valve_maintenance_manager import ValveMaintenanceManager
 from .schemas import validate_template_or_number
 
 _LOGGER = logging.getLogger(__name__)
@@ -231,6 +248,20 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_HEAT_COOL_MODE): cv.boolean,
         vol.Optional(CONF_MAX_TEMP): vol.Coerce(float),
         vol.Optional(CONF_MIN_DUR): vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(
+            CONF_HEATER_CONTROL_MODE, default=HeaterControlMode.BANG_BANG
+        ): vol.Coerce(HeaterControlMode),
+        vol.Optional(
+            CONF_PWM_CYCLE_DURATION, default=DEFAULT_PWM_CYCLE_DURATION
+        ): cv.positive_int,
+        vol.Optional(CONF_TPI_COEF_INT): vol.Coerce(float),
+        vol.Optional(CONF_TPI_COEF_EXT): vol.Coerce(float),
+        vol.Optional(CONF_AI_INITIAL_HEATING_POWER): vol.Coerce(float),
+        vol.Optional(CONF_VALVE_MAINTENANCE, default=False): cv.boolean,
+        vol.Optional(
+            CONF_VALVE_MAINTENANCE_INTERVAL,
+            default=DEFAULT_VALVE_MAINTENANCE_INTERVAL,
+        ): cv.positive_int,
         vol.Optional(CONF_MIN_TEMP): vol.Coerce(float),
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
         vol.Optional(CONF_COLD_TOLERANCE, default=DEFAULT_TOLERANCE): vol.Coerce(float),
@@ -493,7 +524,23 @@ async def _async_setup_config(
     )
     sensor_key = unique_id or name
     thermostat._action_reason_sensor_key = sensor_key
+
+    # Valve maintenance configuration (anti-stick exercise of the heater switch).
+    thermostat._valve_maintenance_enabled = config.get(CONF_VALVE_MAINTENANCE, False)
+    thermostat._valve_maintenance_interval = config.get(
+        CONF_VALVE_MAINTENANCE_INTERVAL, DEFAULT_VALVE_MAINTENANCE_INTERVAL
+    )
+    thermostat._valve_maintenance_entity = config.get(CONF_HEATER)
+
     async_add_entities([thermostat])
+
+    # Entity service to reset AI Time Based learning (heating power / heat loss).
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_RESET_HEATING_POWER,
+        {},
+        "async_reset_heating_power",
+    )
 
     # Service to set HVACActionReason.
     def set_hvac_action_reason_service(call: ServiceCall) -> None:
@@ -568,6 +615,13 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         # feature manager
         self.features = feature_manager
+
+        # valve maintenance (set by the platform setup helper)
+        self._valve_maintenance_enabled = False
+        self._valve_maintenance_interval = DEFAULT_VALVE_MAINTENANCE_INTERVAL
+        self._valve_maintenance_entity = None
+        self._valve_maintenance_manager = None
+        self._valve_maintenance_active = False
 
         # opening manager
         self.openings = opening_manager
@@ -868,6 +922,16 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
                     )
                 )
 
+        if self._valve_maintenance_enabled and self._valve_maintenance_entity:
+            self._valve_maintenance_manager = ValveMaintenanceManager(
+                self.hass,
+                self._valve_maintenance_entity,
+                self._valve_maintenance_interval,
+                self._set_valve_maintenance_active,
+            )
+            self._valve_maintenance_manager.schedule_initial()
+            self.async_on_remove(self._valve_maintenance_manager.cancel)
+
         if self.openings.opening_entities:
             self.async_on_remove(
                 async_track_state_change_event(
@@ -928,6 +992,9 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         if (old_state := await self.async_get_last_state()) is not None:
             # If we have no initial temperature, restore
             self.environment.apply_old_state(old_state)
+
+            # Restore AI Time Based learned values (heating power / heat loss).
+            self._restore_ai_learning(old_state)
 
             hvac_mode = self._hvac_mode or old_state.state or HVACMode.OFF
 
@@ -1168,6 +1235,40 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             return None
         return self.features.swing_modes
 
+    def _find_pwm_heater(self) -> PwmHeaterDevice | None:
+        """Locate the PWM/AI heater device within the device tree, if any."""
+        device = self.hvac_device
+        if isinstance(device, PwmHeaterDevice):
+            return device
+        heater = getattr(device, "heater_device", None)
+        if isinstance(heater, PwmHeaterDevice):
+            return heater
+        for sub in getattr(device, "hvac_devices", []) or []:
+            if isinstance(sub, PwmHeaterDevice):
+                return sub
+            sub_heater = getattr(sub, "heater_device", None)
+            if isinstance(sub_heater, PwmHeaterDevice):
+                return sub_heater
+        return None
+
+    def _restore_ai_learning(self, old_state) -> None:
+        """Restore AI Time Based learned values from a persisted state."""
+        pwm_heater = self._find_pwm_heater()
+        if not isinstance(pwm_heater, AiHeaterDevice):
+            return
+        heating_power = old_state.attributes.get(ATTR_HEATING_POWER)
+        heat_loss = old_state.attributes.get(ATTR_HEAT_LOSS)
+        if heating_power is not None or heat_loss is not None:
+            pwm_heater.restore_learned_state(heating_power, heat_loss)
+
+    async def async_reset_heating_power(self) -> None:
+        """Service: reset AI Time Based learned values to defaults."""
+        pwm_heater = self._find_pwm_heater()
+        if isinstance(pwm_heater, AiHeaterDevice):
+            pwm_heater.reset_learning()
+            _LOGGER.info("Reset AI heating power learning for %s", self.entity_id)
+            self.async_write_ha_state()
+
     @property
     def extra_state_attributes(self) -> dict:
         """Return entity specific state attributes to be saved."""
@@ -1184,6 +1285,15 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         if self._cur_humidity is not None:
             attributes[ATTR_PREV_HUMIDITY] = self.environment.target_humidity
+
+        # Proportional heating diagnostics + persisted AI learning.
+        pwm_heater = self._find_pwm_heater()
+        if pwm_heater is not None:
+            if pwm_heater.duty_cycle is not None:
+                attributes[ATTR_HEATER_DUTY_CYCLE] = pwm_heater.duty_cycle
+            if isinstance(pwm_heater, AiHeaterDevice):
+                attributes[ATTR_HEATING_POWER] = pwm_heater.heating_power
+                attributes[ATTR_HEAT_LOSS] = pwm_heater.heat_loss_rate
 
         # Phase 1.4: expose apparent ("feels-like") temp when the flag is
         # on and humidity is available. Hidden otherwise to avoid clutter.
@@ -1735,10 +1845,19 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         self.async_write_ha_state()
 
+    @callback
+    def _set_valve_maintenance_active(self, active: bool) -> None:
+        """Suspend/resume normal control while valve maintenance runs."""
+        self._valve_maintenance_active = active
+
     async def _async_control_climate(self, time=None, force=False) -> None:
         """Control the climate device based on config."""
 
         _LOGGER.debug("Attempting to control climate, time %s, force %s", time, force)
+
+        if self._valve_maintenance_active:
+            _LOGGER.debug("Valve maintenance in progress, skipping control")
+            return
 
         async with self._temp_lock:
             if self._hvac_mode == HVACMode.AUTO and self._auto_evaluator is not None:

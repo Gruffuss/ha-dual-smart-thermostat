@@ -21,3 +21,12 @@ set_hvac_action_reason:
             - "malfunction"
             - "misconfiguration"
             - ''
+
+reset_heating_power:
+  name: Reset AI heating power learning
+  description: >-
+    Reset the AI Time Based learned heating power and heat-loss values to their
+    defaults. Only affects thermostats using the AI heater control mode.
+  target:
+    entity:
+      domain: climate

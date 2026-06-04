@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
 from ..const import (
+    CONF_AI_INITIAL_HEATING_POWER,
     CONF_AUX_HEATER,
     CONF_AUX_HEATING_DUAL_MODE,
     CONF_AUX_HEATING_TIMEOUT,
@@ -15,9 +16,18 @@ from ..const import (
     CONF_FAN_ON_WITH_AC,
     CONF_HEAT_PUMP_COOLING,
     CONF_HEATER,
+    CONF_HEATER_CONTROL_MODE,
     CONF_INITIAL_HVAC_MODE,
     CONF_MIN_DUR,
+    CONF_PWM_CYCLE_DURATION,
+    CONF_TPI_COEF_EXT,
+    CONF_TPI_COEF_INT,
+    DEFAULT_PWM_CYCLE_DURATION,
+    HeaterControlMode,
 )
+from ..control.thermal_learning import DEFAULT_HEATING_POWER
+from ..control.tpi import DEFAULT_COEF_EXT, DEFAULT_COEF_INT, TpiParams
+from ..hvac_device.ai_heater_device import AiHeaterDevice
 from ..hvac_device.controllable_hvac_device import ControlableHVACDevice
 from ..hvac_device.cooler_device import CoolerDevice
 from ..hvac_device.cooler_fan_device import CoolerFanDevice
@@ -28,6 +38,7 @@ from ..hvac_device.heater_aux_heater_device import HeaterAUXHeaterDevice
 from ..hvac_device.heater_cooler_device import HeaterCoolerDevice
 from ..hvac_device.heater_device import HeaterDevice
 from ..hvac_device.multi_hvac_device import MultiHvacDevice
+from ..hvac_device.pwm_heater_device import PwmHeaterDevice
 from ..hvac_device.wrapped_climate_device import WrappedClimateDevice
 from ..managers.environment_manager import EnvironmentManager
 from ..managers.feature_manager import FeatureManager
@@ -71,6 +82,21 @@ class HVACDeviceFactory:
         self._min_cycle_duration: timedelta = config.get(CONF_MIN_DUR)
 
         self._initial_hvac_mode = config.get(CONF_INITIAL_HVAC_MODE)
+
+        # Proportional heating control (PWM/TPI) over the heater switch.
+        self._heater_control_mode = config.get(
+            CONF_HEATER_CONTROL_MODE, HeaterControlMode.BANG_BANG
+        )
+        self._pwm_cycle_duration = timedelta(
+            seconds=config.get(CONF_PWM_CYCLE_DURATION, DEFAULT_PWM_CYCLE_DURATION)
+        )
+        self._tpi_params = TpiParams(
+            coef_int=config.get(CONF_TPI_COEF_INT, DEFAULT_COEF_INT),
+            coef_ext=config.get(CONF_TPI_COEF_EXT, DEFAULT_COEF_EXT),
+        )
+        self._ai_initial_heating_power = config.get(
+            CONF_AI_INITIAL_HEATING_POWER, DEFAULT_HEATING_POWER
+        )
 
     def create_device(
         self,
@@ -176,15 +202,8 @@ class HVACDeviceFactory:
             and not self._features.is_configured_for_heat_pump_mode
         ):
             """Create a heater device if no other specific device is configured"""
-            heater_device = HeaterDevice(
-                self.hass,
-                self._heater_entity_id,
-                self._min_cycle_duration,
-                self._initial_hvac_mode,
-                environment,
-                openings,
-                self._features,
-                hvac_power,
+            heater_device = self._create_heater_device(
+                environment, openings, hvac_power
             )
 
         if aux_heater_device and heater_device:
@@ -332,3 +351,55 @@ class HVACDeviceFactory:
     def _is_climate_entity(entity_id: str | None) -> bool:
         """Return True if the entity_id belongs to the climate domain."""
         return bool(entity_id) and entity_id.split(".")[0] == CLIMATE_DOMAIN
+
+    def _create_heater_device(
+        self,
+        environment: EnvironmentManager,
+        openings: OpeningManager,
+        hvac_power: HvacPowerManager,
+    ) -> HeaterDevice:
+        """Create a bang-bang, TPI, or AI heater device per the control mode."""
+        if self._heater_control_mode == HeaterControlMode.AI:
+            _LOGGER.info(
+                "Creating AI Time Based heater device for %s", self._heater_entity_id
+            )
+            return AiHeaterDevice(
+                self.hass,
+                self._heater_entity_id,
+                self._min_cycle_duration,
+                self._initial_hvac_mode,
+                environment,
+                openings,
+                self._features,
+                hvac_power,
+                self._pwm_cycle_duration,
+                self._ai_initial_heating_power,
+            )
+
+        if self._heater_control_mode == HeaterControlMode.TPI:
+            _LOGGER.info(
+                "Creating TPI (PWM) heater device for %s", self._heater_entity_id
+            )
+            return PwmHeaterDevice(
+                self.hass,
+                self._heater_entity_id,
+                self._min_cycle_duration,
+                self._initial_hvac_mode,
+                environment,
+                openings,
+                self._features,
+                hvac_power,
+                self._pwm_cycle_duration,
+                self._tpi_params,
+            )
+
+        return HeaterDevice(
+            self.hass,
+            self._heater_entity_id,
+            self._min_cycle_duration,
+            self._initial_hvac_mode,
+            environment,
+            openings,
+            self._features,
+            hvac_power,
+        )
