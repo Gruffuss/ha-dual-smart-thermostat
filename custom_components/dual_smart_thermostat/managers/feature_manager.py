@@ -85,6 +85,9 @@ class FeatureManager(StateManager):
         # Fan device reference for speed control
         self._fan_device = None
 
+        # Swing device reference (a wrapped climate entity that exposes swing)
+        self._swing_device = None
+
     @property
     def heat_pump_cooling_entity_id(self) -> str:
         return self._heat_pump_cooling_entity_id
@@ -298,6 +301,10 @@ class FeatureManager(StateManager):
         if self.supports_fan_mode:
             self._supported_features |= ClimateEntityFeature.FAN_MODE
 
+        # Add SWING_MODE feature if a wrapped climate device exposes swing
+        if self.supports_swing_mode:
+            self._supported_features |= ClimateEntityFeature.SWING_MODE
+
     def apply_old_state(
         self, old_state: State | None, hvac_mode: HVACMode | None = None, presets=[]
     ) -> None:
@@ -377,3 +384,30 @@ class FeatureManager(StateManager):
         # Restore the fan mode using the public method
         # This validates the mode and logs appropriately
         self._fan_device.restore_fan_mode(old_fan_mode)
+
+    def set_swing_device(self, swing_device) -> None:
+        """Set the device reference used for swing passthrough.
+
+        This is a wrapped ``climate`` entity (e.g. a split AC) that exposes
+        ``swing_modes`` / ``async_set_swing_mode``.
+        """
+        self._swing_device = swing_device
+
+    @property
+    def swing_device(self):
+        """Return the swing-capable device if available."""
+        return self._swing_device
+
+    @property
+    def supports_swing_mode(self) -> bool:
+        """Return if a wrapped device exposes swing control."""
+        if self._swing_device is None:
+            return False
+        return self._swing_device.supports_swing_mode
+
+    @property
+    def swing_modes(self) -> list[str]:
+        """Return list of available swing modes."""
+        if self._swing_device is None:
+            return []
+        return self._swing_device.swing_modes

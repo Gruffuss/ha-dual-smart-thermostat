@@ -153,6 +153,19 @@ class WrappedClimateDevice(CoolerDevice):
         state = self._entity_state
         return state.attributes.get(ATTR_FAN_MODE) if state else None
 
+    def restore_fan_mode(self, fan_mode: str) -> None:
+        """No-op: the wrapped climate entity restores its own fan mode.
+
+        Provided for duck-typing compatibility with ``FanDevice`` so the feature
+        manager's fan-mode restore path works when this device is used as the
+        fan device.
+        """
+        _LOGGER.debug(
+            "Skipping fan mode restore for wrapped climate %s (entity restores "
+            "its own state)",
+            self.entity_id,
+        )
+
     @property
     def supports_swing_mode(self) -> bool:
         return self._supports_swing_mode

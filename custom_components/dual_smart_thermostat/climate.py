@@ -75,6 +75,7 @@ from .const import (
     ATTR_PREV_TARGET,
     ATTR_PREV_TARGET_HIGH,
     ATTR_PREV_TARGET_LOW,
+    ATTR_SWING_MODE,
     CONF_AC_MODE,
     CONF_AUTO_OUTSIDE_DELTA_BOOST,
     CONF_AUX_HEATER,
@@ -1150,6 +1151,23 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         return self.features.fan_modes
 
     @property
+    def swing_mode(self) -> str | None:
+        """Return the current swing mode of a wrapped climate entity."""
+        if not self.features.supports_swing_mode:
+            return None
+        swing_device = self.features.swing_device
+        if swing_device is None:
+            return None
+        return swing_device.current_swing_mode
+
+    @property
+    def swing_modes(self) -> list[str] | None:
+        """Return the list of available swing modes."""
+        if not self.features.supports_swing_mode:
+            return None
+        return self.features.swing_modes
+
+    @property
     def extra_state_attributes(self) -> dict:
         """Return entity specific state attributes to be saved."""
 
@@ -1187,6 +1205,10 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         # Add fan mode to state attributes for persistence
         if self.features.supports_fan_mode and self.fan_mode is not None:
             attributes[ATTR_FAN_MODE] = self.fan_mode
+
+        # Add swing mode to state attributes for persistence
+        if self.features.supports_swing_mode and self.swing_mode is not None:
+            attributes[ATTR_SWING_MODE] = self.swing_mode
 
         # TODO: set these only if configured to avoid unnecessary DB writes
         if self.features.is_configured_for_hvac_power_levels:
@@ -1375,6 +1397,22 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             return
 
         await fan_device.async_set_fan_mode(fan_mode)
+        self.async_write_ha_state()
+
+    async def async_set_swing_mode(self, swing_mode: str) -> None:
+        """Set new swing mode on a wrapped climate entity."""
+        if not self.features.supports_swing_mode:
+            _LOGGER.warning("Cannot set swing mode: device does not support swing")
+            return
+
+        _LOGGER.info("Setting swing mode: %s", swing_mode)
+
+        swing_device = self.features.swing_device
+        if swing_device is None:
+            _LOGGER.warning("Cannot set swing mode: swing device not found")
+            return
+
+        await swing_device.async_set_swing_mode(swing_mode)
         self.async_write_ha_state()
 
     def _set_temperatures_dual_mode(self, temperatures: TargetTemperatures) -> None:

@@ -10,11 +10,15 @@ import logging
 
 from homeassistant.components import input_boolean
 from homeassistant.components.climate import (
+    ATTR_FAN_MODE,
     ATTR_FAN_MODES,
     ATTR_HVAC_MODES,
+    ATTR_SWING_MODE,
     ATTR_SWING_MODES,
     DOMAIN as CLIMATE,
+    SERVICE_SET_FAN_MODE,
     SERVICE_SET_HVAC_MODE,
+    SERVICE_SET_SWING_MODE,
     SERVICE_SET_TEMPERATURE,
     ClimateEntityFeature,
     HVACMode,
@@ -57,33 +61,56 @@ def _setup_wrapped_ac(hass: HomeAssistant, hvac_mode: str = HVACMode.OFF):
     """Register a fake climate entity and capture commands sent to it.
 
     The fake handlers also update the entity state so the thermostat's
-    "is the AC running?" feedback works realistically.
+    "is the AC running?" feedback (and fan/swing readback) works realistically.
+
+    Returns a dict of captured service-call lists keyed by service name.
     """
     hass.states.async_set(WRAPPED_AC, hvac_mode, dict(WRAPPED_ATTRS))
 
-    hvac_mode_calls = []
-    temperature_calls = []
+    calls = {
+        SERVICE_SET_HVAC_MODE: [],
+        SERVICE_SET_TEMPERATURE: [],
+        SERVICE_SET_FAN_MODE: [],
+        SERVICE_SET_SWING_MODE: [],
+    }
+
+    def _update_attr(key, value) -> None:
+        current = hass.states.get(WRAPPED_AC)
+        attrs = dict(current.attributes)
+        attrs[key] = value
+        hass.states.async_set(WRAPPED_AC, current.state, attrs)
 
     @callback
     def handle_set_hvac_mode(call) -> None:
-        hvac_mode_calls.append(call)
-        new_mode = call.data["hvac_mode"]
-        hass.states.async_set(WRAPPED_AC, new_mode, dict(WRAPPED_ATTRS))
+        calls[SERVICE_SET_HVAC_MODE].append(call)
+        current = hass.states.get(WRAPPED_AC)
+        hass.states.async_set(
+            WRAPPED_AC, call.data["hvac_mode"], dict(current.attributes)
+        )
 
     @callback
     def handle_set_temperature(call) -> None:
-        temperature_calls.append(call)
-        current = hass.states.get(WRAPPED_AC)
-        attrs = dict(current.attributes)
-        attrs[ATTR_TEMPERATURE] = call.data[ATTR_TEMPERATURE]
-        hass.states.async_set(WRAPPED_AC, current.state, attrs)
+        calls[SERVICE_SET_TEMPERATURE].append(call)
+        _update_attr(ATTR_TEMPERATURE, call.data[ATTR_TEMPERATURE])
+
+    @callback
+    def handle_set_fan_mode(call) -> None:
+        calls[SERVICE_SET_FAN_MODE].append(call)
+        _update_attr(ATTR_FAN_MODE, call.data[ATTR_FAN_MODE])
+
+    @callback
+    def handle_set_swing_mode(call) -> None:
+        calls[SERVICE_SET_SWING_MODE].append(call)
+        _update_attr(ATTR_SWING_MODE, call.data[ATTR_SWING_MODE])
 
     hass.services.async_register(CLIMATE, SERVICE_SET_HVAC_MODE, handle_set_hvac_mode)
     hass.services.async_register(
         CLIMATE, SERVICE_SET_TEMPERATURE, handle_set_temperature
     )
+    hass.services.async_register(CLIMATE, SERVICE_SET_FAN_MODE, handle_set_fan_mode)
+    hass.services.async_register(CLIMATE, SERVICE_SET_SWING_MODE, handle_set_swing_mode)
 
-    return hvac_mode_calls, temperature_calls
+    return calls
 
 
 async def _setup_thermostat(hass: HomeAssistant, target_temp: float = 22) -> None:
@@ -116,7 +143,7 @@ async def _setup_thermostat(hass: HomeAssistant, target_temp: float = 22) -> Non
 @pytest.mark.asyncio
 async def test_wrapped_climate_cooling_commands_hvac_mode(hass: HomeAssistant) -> None:
     """When cooling is needed the wrapped climate entity is told to cool."""
-    hvac_mode_calls, _ = _setup_wrapped_ac(hass)
+    calls = _setup_wrapped_ac(hass)
     await _setup_thermostat(hass, target_temp=22)
 
     # Room is hotter than target + tolerance -> needs cooling.
@@ -125,7 +152,7 @@ async def test_wrapped_climate_cooling_commands_hvac_mode(hass: HomeAssistant) -
 
     cool_calls = [
         c
-        for c in hvac_mode_calls
+        for c in calls[SERVICE_SET_HVAC_MODE]
         if c.data.get(ATTR_ENTITY_ID) == WRAPPED_AC
         and c.data.get("hvac_mode") == HVACMode.COOL
     ]
@@ -136,14 +163,16 @@ async def test_wrapped_climate_cooling_commands_hvac_mode(hass: HomeAssistant) -
 @pytest.mark.asyncio
 async def test_wrapped_climate_passes_target_temperature(hass: HomeAssistant) -> None:
     """The thermostat's target temperature is passed through to the wrapped AC."""
-    _, temperature_calls = _setup_wrapped_ac(hass)
+    calls = _setup_wrapped_ac(hass)
     await _setup_thermostat(hass, target_temp=21)
 
     setup_sensor(hass, 26)
     await hass.async_block_till_done()
 
     temp_calls = [
-        c for c in temperature_calls if c.data.get(ATTR_ENTITY_ID) == WRAPPED_AC
+        c
+        for c in calls[SERVICE_SET_TEMPERATURE]
+        if c.data.get(ATTR_ENTITY_ID) == WRAPPED_AC
     ]
     assert temp_calls, "Expected climate.set_temperature on the wrapped AC"
     assert temp_calls[-1].data[ATTR_TEMPERATURE] == 21
@@ -154,7 +183,7 @@ async def test_wrapped_climate_turns_off_when_goal_reached(
     hass: HomeAssistant,
 ) -> None:
     """When the room cools below target the wrapped AC is turned off."""
-    hvac_mode_calls, _ = _setup_wrapped_ac(hass)
+    calls = _setup_wrapped_ac(hass)
     await _setup_thermostat(hass, target_temp=22)
 
     # First make it cool.
@@ -168,7 +197,7 @@ async def test_wrapped_climate_turns_off_when_goal_reached(
 
     off_calls = [
         c
-        for c in hvac_mode_calls
+        for c in calls[SERVICE_SET_HVAC_MODE]
         if c.data.get(ATTR_ENTITY_ID) == WRAPPED_AC
         and c.data.get("hvac_mode") == HVACMode.OFF
     ]
@@ -196,6 +225,61 @@ async def test_wrapped_climate_off_mode_turns_off_ac(hass: HomeAssistant) -> Non
     await hass.async_block_till_done()
 
     assert hass.states.get(WRAPPED_AC).state == HVACMode.OFF
+
+
+@pytest.mark.asyncio
+async def test_wrapped_climate_exposes_fan_and_swing(hass: HomeAssistant) -> None:
+    """The thermostat surfaces the wrapped AC's fan and swing capabilities."""
+    _setup_wrapped_ac(hass)
+    await _setup_thermostat(hass, target_temp=22)
+
+    state = hass.states.get("climate.test")
+    assert state.attributes.get(ATTR_FAN_MODES) == ["auto", "low", "high"]
+    assert state.attributes.get(ATTR_SWING_MODES) == ["off", "vertical"]
+
+    features = state.attributes.get(ATTR_SUPPORTED_FEATURES)
+    assert features & ClimateEntityFeature.FAN_MODE
+    assert features & ClimateEntityFeature.SWING_MODE
+
+
+@pytest.mark.asyncio
+async def test_wrapped_climate_fan_mode_passthrough(hass: HomeAssistant) -> None:
+    """Setting a fan mode is passed through to the wrapped AC."""
+    calls = _setup_wrapped_ac(hass)
+    await _setup_thermostat(hass, target_temp=22)
+
+    thermostat = hass.data["entity_components"][CLIMATE].get_entity("climate.test")
+    await thermostat.async_set_fan_mode("high")
+    await hass.async_block_till_done()
+
+    fan_calls = [
+        c
+        for c in calls[SERVICE_SET_FAN_MODE]
+        if c.data.get(ATTR_ENTITY_ID) == WRAPPED_AC
+    ]
+    assert fan_calls, "Expected climate.set_fan_mode on the wrapped AC"
+    assert fan_calls[-1].data[ATTR_FAN_MODE] == "high"
+    assert hass.states.get("climate.test").attributes.get(ATTR_FAN_MODE) == "high"
+
+
+@pytest.mark.asyncio
+async def test_wrapped_climate_swing_mode_passthrough(hass: HomeAssistant) -> None:
+    """Setting a swing mode is passed through to the wrapped AC."""
+    calls = _setup_wrapped_ac(hass)
+    await _setup_thermostat(hass, target_temp=22)
+
+    thermostat = hass.data["entity_components"][CLIMATE].get_entity("climate.test")
+    await thermostat.async_set_swing_mode("vertical")
+    await hass.async_block_till_done()
+
+    swing_calls = [
+        c
+        for c in calls[SERVICE_SET_SWING_MODE]
+        if c.data.get(ATTR_ENTITY_ID) == WRAPPED_AC
+    ]
+    assert swing_calls, "Expected climate.set_swing_mode on the wrapped AC"
+    assert swing_calls[-1].data[ATTR_SWING_MODE] == "vertical"
+    assert hass.states.get("climate.test").attributes.get(ATTR_SWING_MODE) == "vertical"
 
 
 @pytest.mark.asyncio
