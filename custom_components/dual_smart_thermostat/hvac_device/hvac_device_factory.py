@@ -209,13 +209,15 @@ class HVACDeviceFactory:
 
         # A wrapped climate cooler (e.g. a split AC) exposes its own fan speed
         # and swing; surface those through the feature manager so the thermostat
-        # can pass them through. Only use it as the fan device when there is no
-        # dedicated fan entity.
+        # can pass them through. Register it unconditionally: capability is read
+        # dynamically from the device, so it reflects the wrapped entity even if
+        # the entity was unavailable when the device was built (the feature
+        # manager then reports no fan/swing until the entity comes online). Only
+        # use it as the fan device when there is no dedicated fan entity.
         if isinstance(cooler_device, WrappedClimateDevice):
-            if cooler_device.supports_fan_mode and fan_device is None:
+            if fan_device is None:
                 self._features.set_fan_device(cooler_device)
-            if cooler_device.supports_swing_mode:
-                self._features.set_swing_device(cooler_device)
+            self._features.set_swing_device(cooler_device)
 
         if heater_device is not None and cooler_device is not None:
             _LOGGER.info("Creating heater cooler device")

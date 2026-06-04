@@ -21,12 +21,14 @@ from homeassistant.components.climate import (
     SERVICE_SET_SWING_MODE,
     SERVICE_SET_TEMPERATURE,
     ClimateEntityFeature,
+    HVACAction,
     HVACMode,
 )
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_SUPPORTED_FEATURES,
     ATTR_TEMPERATURE,
+    STATE_UNAVAILABLE,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.setup import async_setup_component
@@ -325,3 +327,89 @@ async def test_wrapped_climate_capabilities_detected(hass: HomeAssistant) -> Non
     assert detected.get("fan_modes") == ["auto", "low", "high"]
     assert detected.get("swing") is True
     assert detected.get("swing_modes") == ["off", "vertical"]
+
+
+# --- Phase 4: unavailable-entity handling ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_wrapped_climate_unavailable_skips_commands(hass: HomeAssistant) -> None:
+    """Fan/swing commands are silently skipped when the AC is unavailable."""
+    calls = await _setup_full(hass, target_temp=22)
+
+    # AC drops offline.
+    hass.states.async_set(WRAPPED_AC, STATE_UNAVAILABLE)
+    await hass.async_block_till_done()
+
+    thermostat = hass.data["entity_components"][CLIMATE].get_entity("climate.test")
+    # Should not raise and should not issue service calls to an offline entity.
+    await thermostat.async_set_fan_mode("high")
+    await thermostat.async_set_swing_mode("vertical")
+    await hass.async_block_till_done()
+
+    assert not calls[SERVICE_SET_FAN_MODE]
+    assert not calls[SERVICE_SET_SWING_MODE]
+
+
+@pytest.mark.asyncio
+async def test_wrapped_climate_capabilities_preserved_when_unavailable(
+    hass: HomeAssistant,
+) -> None:
+    """Capabilities are kept (not wiped) when the AC goes unavailable."""
+    await _setup_full(hass, target_temp=22)
+
+    state = hass.states.get("climate.test")
+    assert state.attributes.get(ATTR_FAN_MODES) == ["auto", "low", "high"]
+
+    hass.states.async_set(WRAPPED_AC, STATE_UNAVAILABLE)
+    await hass.async_block_till_done()
+
+    # Last-known capabilities remain exposed so the card keeps its controls.
+    state = hass.states.get("climate.test")
+    assert state.attributes.get(ATTR_FAN_MODES) == ["auto", "low", "high"]
+    assert state.attributes.get(ATTR_SWING_MODES) == ["off", "vertical"]
+
+
+@pytest.mark.asyncio
+async def test_wrapped_climate_late_capability_detection(hass: HomeAssistant) -> None:
+    """An AC unavailable at startup gains fan/swing once it comes online."""
+    # AC is unavailable when the thermostat is set up.
+    hass.states.async_set(WRAPPED_AC, STATE_UNAVAILABLE)
+    await _setup_thermostat(hass, target_temp=22)
+    _register_ac_handlers(hass)
+
+    state = hass.states.get("climate.test")
+    features = state.attributes.get(ATTR_SUPPORTED_FEATURES)
+    assert not (features & ClimateEntityFeature.FAN_MODE)
+    assert not (features & ClimateEntityFeature.SWING_MODE)
+
+    # AC comes online with full capabilities.
+    hass.states.async_set(WRAPPED_AC, HVACMode.OFF, dict(WRAPPED_ATTRS))
+    await hass.async_block_till_done()
+
+    state = hass.states.get("climate.test")
+    features = state.attributes.get(ATTR_SUPPORTED_FEATURES)
+    assert features & ClimateEntityFeature.FAN_MODE
+    assert features & ClimateEntityFeature.SWING_MODE
+    assert state.attributes.get(ATTR_FAN_MODES) == ["auto", "low", "high"]
+    assert state.attributes.get(ATTR_SWING_MODES) == ["off", "vertical"]
+
+
+@pytest.mark.asyncio
+async def test_wrapped_climate_hvac_action_off_when_unavailable(
+    hass: HomeAssistant,
+) -> None:
+    """hvac_action reports OFF (not COOLING) when a cooling AC goes offline."""
+    await _setup_full(hass, target_temp=22)
+
+    setup_sensor(hass, 26)
+    await hass.async_block_till_done()
+
+    thermostat = hass.data["entity_components"][CLIMATE].get_entity("climate.test")
+    wrapped = thermostat.hvac_device.cooler_device
+    assert wrapped.hvac_mode == HVACMode.COOL
+
+    hass.states.async_set(WRAPPED_AC, STATE_UNAVAILABLE)
+    await hass.async_block_till_done()
+
+    assert wrapped.hvac_action == HVACAction.OFF

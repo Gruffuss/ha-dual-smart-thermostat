@@ -42,10 +42,19 @@ class HeaterCoolerDevice(MultiHvacDevice):
             _LOGGER.error("Heater or cooler device is not found")
             return
 
+        self.set_initial_hvac_mode(initial_hvac_mode)
+
+    def init_hvac_modes(self, hvac_devices: list) -> None:
+        """Merge sub-device modes and add the combined HEAT_COOL mode.
+
+        Overridden so HEAT_COOL is preserved whenever the mode list is rebuilt
+        (not only at construction). The base implementation re-merges only the
+        sub-devices' modes, which would otherwise drop HEAT_COOL when a tracked
+        entity state change triggers a refresh.
+        """
+        super().init_hvac_modes(hvac_devices)
         if self._features.is_configured_for_heat_cool_mode:
             self.hvac_modes = merge_hvac_modes(self.hvac_modes, [HVACMode.HEAT_COOL])
-
-        self.set_initial_hvac_mode(initial_hvac_mode)
 
     @property
     def hvac_mode(self) -> HVACMode:

@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.components.climate import (
     PLATFORM_SCHEMA,
     ClimateEntity,
+    ClimateEntityFeature,
     HVACAction,
     HVACMode,
 )
@@ -1827,7 +1828,33 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         """Handle heater switch state changes."""
 
         data = event.data
-        self._async_switch_changed(data["old_state"], data["new_state"])
+        new_state = data["new_state"]
+
+        # Forward to the device so capability-aware devices (e.g. a wrapped
+        # climate cooler) can refresh fan/swing/temperature capabilities — for
+        # instance when the wrapped entity was unavailable at startup and later
+        # comes online. Every device's on_entity_state_changed is entity-id
+        # guarded, so this is a no-op for devices that don't own this entity.
+        if new_state is not None:
+            self.hvac_device.on_entity_state_changed(data["entity_id"], new_state)
+            self._refresh_passthrough_support_flags()
+
+        self._async_switch_changed(data["old_state"], new_state)
+
+    @callback
+    def _refresh_passthrough_support_flags(self) -> None:
+        """Add fan/swing feature bits exposed by a wrapped climate cooler.
+
+        A wrapped climate entity's capabilities may only become known after
+        startup (it was unavailable when Home Assistant started). This adds the
+        relevant feature bits without the side effects of a full support-flag
+        recompute (which can reset target temperatures). Bits are only added,
+        never removed.
+        """
+        if self.features.supports_fan_mode:
+            self._attr_supported_features |= ClimateEntityFeature.FAN_MODE
+        if self.features.supports_swing_mode:
+            self._attr_supported_features |= ClimateEntityFeature.SWING_MODE
 
     @callback
     def _async_switch_changed(

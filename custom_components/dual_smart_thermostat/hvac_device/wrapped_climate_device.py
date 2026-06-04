@@ -98,10 +98,16 @@ class WrappedClimateDevice(CoolerDevice):
     # ----- capability detection ------------------------------------------------
 
     def _detect_capabilities(self, state: State | None = None) -> None:
-        """Read fan/swing/temperature capabilities from the wrapped entity."""
+        """Read fan/swing/temperature capabilities from the wrapped entity.
+
+        When the wrapped entity is unavailable/unknown its attributes are empty,
+        so we keep the last-known capabilities instead of wiping them. They are
+        re-read once the entity reports a real state again (e.g. it was offline
+        at Home Assistant startup and later came online).
+        """
         if state is None:
             state = self.hass.states.get(self.entity_id)
-        if state is None:
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             return
 
         features = state.attributes.get(ATTR_SUPPORTED_FEATURES) or 0
@@ -195,12 +201,15 @@ class WrappedClimateDevice(CoolerDevice):
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
 
-        # Prefer the wrapped entity's own reported action when available.
+        # An offline AC isn't doing anything; don't claim it's cooling.
         state = self._entity_state
-        if state is not None:
-            action = state.attributes.get(ATTR_HVAC_ACTION)
-            if action is not None:
-                return action
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return HVACAction.OFF
+
+        # Prefer the wrapped entity's own reported action when available.
+        action = state.attributes.get(ATTR_HVAC_ACTION)
+        if action is not None:
+            return action
 
         if self.is_active:
             return HVACAction.COOLING
@@ -256,6 +265,11 @@ class WrappedClimateDevice(CoolerDevice):
         """Pass the thermostat's target temperature through to the wrapped entity."""
         if not self._supports_target_temperature:
             return
+        if not self._wrapped_available():
+            _LOGGER.debug(
+                "Skipping set_temperature for unavailable climate %s", self.entity_id
+            )
+            return
 
         target_temp = getattr(self.environment, self.target_env_attr, None)
         if target_temp is None or target_temp == self._last_target_temp:
@@ -296,6 +310,11 @@ class WrappedClimateDevice(CoolerDevice):
                 self._fan_modes,
             )
             return
+        if not self._wrapped_available():
+            _LOGGER.debug(
+                "Skipping set_fan_mode for unavailable climate %s", self.entity_id
+            )
+            return
         try:
             await self.hass.services.async_call(
                 CLIMATE_DOMAIN,
@@ -321,6 +340,11 @@ class WrappedClimateDevice(CoolerDevice):
                 swing_mode,
                 self.entity_id,
                 self._swing_modes,
+            )
+            return
+        if not self._wrapped_available():
+            _LOGGER.debug(
+                "Skipping set_swing_mode for unavailable climate %s", self.entity_id
             )
             return
         try:
