@@ -20,6 +20,7 @@ import voluptuous as vol
 
 from .const import (
     CONF_AC_MODE,
+    CONF_AI_INITIAL_HEATING_POWER,
     CONF_AUX_HEATER,
     CONF_AUX_HEATING_DUAL_MODE,
     CONF_AUX_HEATING_TIMEOUT,
@@ -70,6 +71,7 @@ from .const import (
     HeaterControlMode,
     SystemType,
 )
+from .control.thermal_learning import DEFAULT_HEATING_POWER
 from .control.tpi import DEFAULT_COEF_EXT, DEFAULT_COEF_INT
 from .schema_utils import (
     get_boolean_selector,
@@ -338,6 +340,7 @@ def get_heating_control_fields(
         [
             {"value": HeaterControlMode.BANG_BANG.value, "label": "Bang-bang (on/off)"},
             {"value": HeaterControlMode.TPI.value, "label": "TPI (time-proportional)"},
+            {"value": HeaterControlMode.AI.value, "label": "AI Time Based (learning)"},
         ]
     )
 
@@ -363,6 +366,13 @@ def get_heating_control_fields(
             default=defaults.get(CONF_TPI_COEF_EXT, DEFAULT_COEF_EXT),
         )
     ] = get_number_selector(min_value=0, max_value=5, step=0.001)
+
+    fields[
+        vol.Optional(
+            CONF_AI_INITIAL_HEATING_POWER,
+            default=defaults.get(CONF_AI_INITIAL_HEATING_POWER, DEFAULT_HEATING_POWER),
+        )
+    ] = get_number_selector(min_value=0.005, max_value=0.2, step=0.001)
 
     return fields
 

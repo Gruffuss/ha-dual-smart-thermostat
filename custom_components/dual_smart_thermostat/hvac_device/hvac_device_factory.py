@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
 from ..const import (
+    CONF_AI_INITIAL_HEATING_POWER,
     CONF_AUX_HEATER,
     CONF_AUX_HEATING_DUAL_MODE,
     CONF_AUX_HEATING_TIMEOUT,
@@ -24,7 +25,9 @@ from ..const import (
     DEFAULT_PWM_CYCLE_DURATION,
     HeaterControlMode,
 )
+from ..control.thermal_learning import DEFAULT_HEATING_POWER
 from ..control.tpi import DEFAULT_COEF_EXT, DEFAULT_COEF_INT, TpiParams
+from ..hvac_device.ai_heater_device import AiHeaterDevice
 from ..hvac_device.controllable_hvac_device import ControlableHVACDevice
 from ..hvac_device.cooler_device import CoolerDevice
 from ..hvac_device.cooler_fan_device import CoolerFanDevice
@@ -90,6 +93,9 @@ class HVACDeviceFactory:
         self._tpi_params = TpiParams(
             coef_int=config.get(CONF_TPI_COEF_INT, DEFAULT_COEF_INT),
             coef_ext=config.get(CONF_TPI_COEF_EXT, DEFAULT_COEF_EXT),
+        )
+        self._ai_initial_heating_power = config.get(
+            CONF_AI_INITIAL_HEATING_POWER, DEFAULT_HEATING_POWER
         )
 
     def create_device(
@@ -352,7 +358,24 @@ class HVACDeviceFactory:
         openings: OpeningManager,
         hvac_power: HvacPowerManager,
     ) -> HeaterDevice:
-        """Create a bang-bang or PWM/TPI heater device per the control mode."""
+        """Create a bang-bang, TPI, or AI heater device per the control mode."""
+        if self._heater_control_mode == HeaterControlMode.AI:
+            _LOGGER.info(
+                "Creating AI Time Based heater device for %s", self._heater_entity_id
+            )
+            return AiHeaterDevice(
+                self.hass,
+                self._heater_entity_id,
+                self._min_cycle_duration,
+                self._initial_hvac_mode,
+                environment,
+                openings,
+                self._features,
+                hvac_power,
+                self._pwm_cycle_duration,
+                self._ai_initial_heating_power,
+            )
+
         if self._heater_control_mode == HeaterControlMode.TPI:
             _LOGGER.info(
                 "Creating TPI (PWM) heater device for %s", self._heater_entity_id

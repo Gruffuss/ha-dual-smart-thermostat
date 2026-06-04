@@ -46,7 +46,7 @@ from homeassistant.core import (
     State,
     callback,
 )
-from homeassistant.helpers import discovery
+from homeassistant.helpers import discovery, entity_platform
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -67,6 +67,9 @@ from .config_validation import validate_config_with_models
 from .const import (
     ATTR_CLOSING_TIMEOUT,
     ATTR_FAN_MODE,
+    ATTR_HEAT_LOSS,
+    ATTR_HEATER_DUTY_CYCLE,
+    ATTR_HEATING_POWER,
     ATTR_HVAC_ACTION_REASON,
     ATTR_HVAC_POWER_LEVEL,
     ATTR_HVAC_POWER_PERCENT,
@@ -78,6 +81,7 @@ from .const import (
     ATTR_PREV_TARGET_LOW,
     ATTR_SWING_MODE,
     CONF_AC_MODE,
+    CONF_AI_INITIAL_HEATING_POWER,
     CONF_AUTO_OUTSIDE_DELTA_BOOST,
     CONF_AUX_HEATER,
     CONF_AUX_HEATING_DUAL_MODE,
@@ -137,6 +141,7 @@ from .const import (
     DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
     MIN_CYCLE_KEEP_ALIVE,
+    SERVICE_RESET_HEATING_POWER,
     SET_HVAC_ACTION_REASON_SENSOR_SIGNAL,
     TIMED_OPENING_SCHEMA,
     HeaterControlMode,
@@ -147,8 +152,10 @@ from .hvac_action_reason.hvac_action_reason import (
     HVACActionReason,
 )
 from .hvac_action_reason.hvac_action_reason_external import HVACActionReasonExternal
+from .hvac_device.ai_heater_device import AiHeaterDevice
 from .hvac_device.controllable_hvac_device import ControlableHVACDevice
 from .hvac_device.hvac_device_factory import HVACDeviceFactory
+from .hvac_device.pwm_heater_device import PwmHeaterDevice
 from .managers.auto_mode_evaluator import AutoDecision, AutoModeEvaluator
 from .managers.environment_manager import EnvironmentManager, TargetTemperatures
 from .managers.feature_manager import FeatureManager
@@ -245,6 +252,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         ): cv.positive_int,
         vol.Optional(CONF_TPI_COEF_INT): vol.Coerce(float),
         vol.Optional(CONF_TPI_COEF_EXT): vol.Coerce(float),
+        vol.Optional(CONF_AI_INITIAL_HEATING_POWER): vol.Coerce(float),
         vol.Optional(CONF_MIN_TEMP): vol.Coerce(float),
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
         vol.Optional(CONF_COLD_TOLERANCE, default=DEFAULT_TOLERANCE): vol.Coerce(float),
@@ -508,6 +516,14 @@ async def _async_setup_config(
     sensor_key = unique_id or name
     thermostat._action_reason_sensor_key = sensor_key
     async_add_entities([thermostat])
+
+    # Entity service to reset AI Time Based learning (heating power / heat loss).
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_RESET_HEATING_POWER,
+        {},
+        "async_reset_heating_power",
+    )
 
     # Service to set HVACActionReason.
     def set_hvac_action_reason_service(call: ServiceCall) -> None:
@@ -943,6 +959,9 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             # If we have no initial temperature, restore
             self.environment.apply_old_state(old_state)
 
+            # Restore AI Time Based learned values (heating power / heat loss).
+            self._restore_ai_learning(old_state)
+
             hvac_mode = self._hvac_mode or old_state.state or HVACMode.OFF
 
             if hvac_mode not in self.hvac_modes:
@@ -1182,6 +1201,40 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             return None
         return self.features.swing_modes
 
+    def _find_pwm_heater(self) -> PwmHeaterDevice | None:
+        """Locate the PWM/AI heater device within the device tree, if any."""
+        device = self.hvac_device
+        if isinstance(device, PwmHeaterDevice):
+            return device
+        heater = getattr(device, "heater_device", None)
+        if isinstance(heater, PwmHeaterDevice):
+            return heater
+        for sub in getattr(device, "hvac_devices", []) or []:
+            if isinstance(sub, PwmHeaterDevice):
+                return sub
+            sub_heater = getattr(sub, "heater_device", None)
+            if isinstance(sub_heater, PwmHeaterDevice):
+                return sub_heater
+        return None
+
+    def _restore_ai_learning(self, old_state) -> None:
+        """Restore AI Time Based learned values from a persisted state."""
+        pwm_heater = self._find_pwm_heater()
+        if not isinstance(pwm_heater, AiHeaterDevice):
+            return
+        heating_power = old_state.attributes.get(ATTR_HEATING_POWER)
+        heat_loss = old_state.attributes.get(ATTR_HEAT_LOSS)
+        if heating_power is not None or heat_loss is not None:
+            pwm_heater.restore_learned_state(heating_power, heat_loss)
+
+    async def async_reset_heating_power(self) -> None:
+        """Service: reset AI Time Based learned values to defaults."""
+        pwm_heater = self._find_pwm_heater()
+        if isinstance(pwm_heater, AiHeaterDevice):
+            pwm_heater.reset_learning()
+            _LOGGER.info("Reset AI heating power learning for %s", self.entity_id)
+            self.async_write_ha_state()
+
     @property
     def extra_state_attributes(self) -> dict:
         """Return entity specific state attributes to be saved."""
@@ -1198,6 +1251,15 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         if self._cur_humidity is not None:
             attributes[ATTR_PREV_HUMIDITY] = self.environment.target_humidity
+
+        # Proportional heating diagnostics + persisted AI learning.
+        pwm_heater = self._find_pwm_heater()
+        if pwm_heater is not None:
+            if pwm_heater.duty_cycle is not None:
+                attributes[ATTR_HEATER_DUTY_CYCLE] = pwm_heater.duty_cycle
+            if isinstance(pwm_heater, AiHeaterDevice):
+                attributes[ATTR_HEATING_POWER] = pwm_heater.heating_power
+                attributes[ATTR_HEAT_LOSS] = pwm_heater.heat_loss_rate
 
         # Phase 1.4: expose apparent ("feels-like") temp when the flag is
         # on and humidity is available. Hidden otherwise to avoid clutter.
