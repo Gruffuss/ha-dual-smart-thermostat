@@ -110,14 +110,28 @@
               "initial_hvac_mode": "Počiatočný režim HVAC",
               "target_temp_high": "Cieľová teplota (vysoká)",
               "target_temp_low": "Cieľová teplota (nízka)",
-              "heat_cool_mode": "Režim vykurovanie/chladenie"
+              "heat_cool_mode": "Režim vykurovanie/chladenie",
+              "heater_control_mode": "Režim ovládania vykurovania",
+              "pwm_cycle_duration": "Trvanie PWM cyklu",
+              "tpi_coef_int": "TPI vnútorný koeficient",
+              "tpi_coef_ext": "TPI vonkajší koeficient",
+              "ai_initial_heating_power": "AI počiatočný vykurovací výkon",
+              "valve_maintenance": "Údržba ventilu (proti zaseknutiu)",
+              "valve_maintenance_interval": "Interval údržby ventilu"
             },
             "data_description": {
               "keep_alive": "Trvanie udržiavania nažive pre periodické prepínanie. Nastavte to, ak váš vypínač potrebuje signál pre udržanie v stave 'zapnuté'.",
               "initial_hvac_mode": "Počiatočný režim HVAC pri štarte Home Assistant. Nastavuje predvolený režim prevádzky pri štarte.",
               "target_temp_high": "Horná cieľová teplota pre systémy s dvojitou teplotou (režim vykurovanie/chladenie).",
               "target_temp_low": "Dolná cieľová teplota pre systémy s dvojitou teplotou (režim vykurovanie/chladenie).",
-              "heat_cool_mode": "Povoliť režim vykurovanie/chladenie s dvojitou reguláciou teploty. Po povolení umožňuje automatické prepínanie medzi vykurovaním a chladením pre udržanie pohodlného teplotného rozsahu."
+              "heat_cool_mode": "Povoliť režim vykurovanie/chladenie s dvojitou reguláciou teploty. Po povolení umožňuje automatické prepínanie medzi vykurovaním a chladením pre udržanie pohodlného teplotného rozsahu.",
+              "heater_control_mode": "Spôsob ovládania spínača vykurovania. Bang-bang je klasické zapnuté/vypnuté riadenie. TPI riadi ventil časovo-proporčným pracovným cyklom, vhodným pre pomalé systémy ako podlahové vykurovanie. AI Time Based pridáva samoučenie vykurovacieho výkonu.",
+              "pwm_cycle_duration": "Dĺžka jedného PWM cyklu pre TPI/AI riadenie (sekundy). Ventil je otvorený počas pracovného cyklu × dĺžka cyklu, zvyšok je zatvorený (predvolené: 1800 s).",
+              "tpi_coef_int": "TPI váha pre odchýlku v miestnosti (cieľ − aktuálna). Vyššie hodnoty reagujú silnejšie na rozdiel teploty (predvolené: 0,6).",
+              "tpi_coef_ext": "TPI váha pre vonkajší gradient (cieľ − vonkajšia), kompenzuje tepelné straty. Vyžaduje vonkajší senzor (predvolené: 0,01).",
+              "ai_initial_heating_power": "Iba AI Time Based: počiatočný odhad vykurovacieho výkonu v °C/min pred naučením. Učenie ho spresní počas 2-3 dní (predvolené: 0,01).",
+              "valve_maintenance": "Pravidelne preexponuje ventil vykurovania (impulzy otvorenia/zatvorenia) aj keď je vykurovanie vypnuté, aby sa počas leta nezasekol.",
+              "valve_maintenance_interval": "Ako často sa má spustiť cyklus údržby ventilu, v dňoch (predvolené: 7)."
             }
           }
         }
@@ -134,6 +148,14 @@
           "description": "Dôvod prečo bola vykonaná posledná činnosť HVAC."
         }
       }
+    },
+    "reset_heating_power": {
+      "name": "Resetovať vykurovací výkon",
+      "description": "Vynuluje hodnoty naučené režimom AI (vykurovací výkon / tepelné straty) na predvolené. Ovplyvní iba termostaty používajúce režim ovládania vykurovania AI."
+    },
+    "run_valve_maintenance": {
+      "name": "Spustiť údržbu ventilu",
+      "description": "Okamžite spustí cyklus údržby ventilu (impulzy otvorenia/zatvorenia spínača vykurovania, potom obnoví predchádzajúci stav). Funguje aj keď je naplánovaná údržba ventilu vypnutá."
     }
   }
 }

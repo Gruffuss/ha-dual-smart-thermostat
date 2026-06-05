@@ -1050,6 +1050,14 @@
                     "description": "The reason the last HVAC action was taken."
                 }
             }
+        },
+        "reset_heating_power": {
+            "name": "Reset heating power",
+            "description": "Reset the AI Time Based learned values (heating power / heat loss) to defaults. Only affects thermostats using the AI heater control mode."
+        },
+        "run_valve_maintenance": {
+            "name": "Run valve maintenance",
+            "description": "Immediately run a valve maintenance cycle (open/close pulses on the heater switch, then restore the prior state). Works even when scheduled valve maintenance is disabled."
         }
     }
 }
