@@ -424,6 +424,7 @@ class TestSimpleHeaterModeInteractions:
         expected_features = [
             "configure_floor_heating",
             "configure_openings",
+            "configure_presence",
             "configure_presets",
         ]
         assert sorted(feature_fields) == sorted(expected_features)

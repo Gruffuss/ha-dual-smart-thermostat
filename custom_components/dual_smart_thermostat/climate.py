@@ -17,6 +17,7 @@ from homeassistant.components.climate.const import (
     ATTR_HVAC_MODE,
     ATTR_TARGET_TEMP_HIGH,
     ATTR_TARGET_TEMP_LOW,
+    PRESET_AWAY,
     PRESET_NONE,
 )
 from homeassistant.components.humidifier import ATTR_HUMIDITY
@@ -30,6 +31,7 @@ from homeassistant.const import (
     PRECISION_HALVES,
     PRECISION_TENTHS,
     PRECISION_WHOLE,
+    STATE_HOME,
     STATE_ON,
     STATE_OPEN,
     STATE_UNAVAILABLE,
@@ -65,6 +67,7 @@ import voluptuous as vol
 from . import DOMAIN, PLATFORMS
 from .config_validation import validate_config_with_models
 from .const import (
+    ATTR_ABSENCE_TIMEOUT,
     ATTR_CLOSING_TIMEOUT,
     ATTR_FAN_MODE,
     ATTR_HEAT_LOSS,
@@ -75,6 +78,7 @@ from .const import (
     ATTR_HVAC_POWER_PERCENT,
     ATTR_LAST_HVAC_MODE,
     ATTR_OPENING_TIMEOUT,
+    ATTR_PRESENCE_TIMEOUT,
     ATTR_PREV_HUMIDITY,
     ATTR_PREV_TARGET,
     ATTR_PREV_TARGET_HIGH,
@@ -123,6 +127,8 @@ from .const import (
     CONF_OPENINGS_SCOPE,
     CONF_OUTSIDE_SENSOR,
     CONF_PRECISION,
+    CONF_PRESENCE,
+    CONF_PRESENCE_SCOPE,
     CONF_PRESETS,
     CONF_PRESETS_OLD,
     CONF_PWM_CYCLE_DURATION,
@@ -148,6 +154,7 @@ from .const import (
     SERVICE_RUN_VALVE_MAINTENANCE,
     SET_HVAC_ACTION_REASON_SENSOR_SIGNAL,
     TIMED_OPENING_SCHEMA,
+    TIMED_PRESENCE_SCHEMA,
     HeaterControlMode,
 )
 from .hvac_action_reason.hvac_action_reason import (
@@ -165,6 +172,7 @@ from .managers.environment_manager import EnvironmentManager, TargetTemperatures
 from .managers.feature_manager import FeatureManager
 from .managers.hvac_power_manager import HvacPowerManager
 from .managers.opening_manager import OpeningHvacModeScope, OpeningManager
+from .managers.presence_manager import PresenceHvacModeScope, PresenceManager
 from .managers.preset_manager import PresetManager
 from .managers.valve_maintenance_manager import ValveMaintenanceManager
 from .schemas import validate_template_or_number
@@ -210,6 +218,13 @@ OPENINGS_SCHEMA = {
     vol.Optional(CONF_OPENINGS): [vol.Any(cv.entity_id, TIMED_OPENING_SCHEMA)],
     vol.Optional(CONF_OPENINGS_SCOPE): vol.Any(
         OpeningHvacModeScope, [scope.value for scope in OpeningHvacModeScope]
+    ),
+}
+
+PRESENCE_SCHEMA = {
+    vol.Optional(CONF_PRESENCE): [vol.Any(cv.entity_id, TIMED_PRESENCE_SCHEMA)],
+    vol.Optional(CONF_PRESENCE_SCOPE): vol.Any(
+        PresenceHvacModeScope, [scope.value for scope in PresenceHvacModeScope]
     ),
 }
 
@@ -298,6 +313,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(SECONDARY_HEATING_SCHEMA)
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(FLOOR_TEMPERATURE_SCHEMA)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(OPENINGS_SCHEMA)
+
+PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(PRESENCE_SCHEMA)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(FAN_MODE_SCHEMA)
 
@@ -484,6 +501,8 @@ async def _async_setup_config(
 
     opening_manager = OpeningManager(hass, config)
 
+    presence_manager = PresenceManager(hass, config)
+
     environment_manager = EnvironmentManager(
         hass,
         config,
@@ -521,6 +540,7 @@ async def _async_setup_config(
         opening_manager,
         feature_manager,
         hvac_power_manager,
+        presence_manager,
         auto_outside_delta_boost=auto_outside_delta_boost,
     )
     sensor_key = unique_id or name
@@ -603,6 +623,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         opening_manager: OpeningManager,
         feature_manager: FeatureManager,
         power_manager: HvacPowerManager,
+        presence_manager: PresenceManager,
         *,
         auto_outside_delta_boost: float | None = None,
     ) -> None:
@@ -632,6 +653,13 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         # opening manager
         self.openings = opening_manager
+
+        # presence manager
+        self.presence = presence_manager
+        # Tracks whether the away preset was activated by presence loss, and
+        # which preset was active beforehand so it can be restored on return.
+        self._presence_forced_away = False
+        self._presence_saved_preset: str | None = None
 
         # power manager
         self.power_manager = power_manager
@@ -947,6 +975,18 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
                     self._async_opening_changed,
                 )
             )
+
+        if self.presence.presence_entities:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    self.presence.presence_entities,
+                    self._async_presence_changed,
+                )
+            )
+            # Evaluate presence once on startup so a system that boots while
+            # nobody is home immediately reflects the away preset.
+            await self._async_apply_presence()
 
         _LOGGER.debug(
             "Setting up signal: %s",
@@ -1879,6 +1919,97 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
     def _set_valve_maintenance_active(self, active: bool) -> None:
         """Suspend/resume normal control while valve maintenance runs."""
         self._valve_maintenance_active = active
+
+    async def _async_presence_changed(
+        self, event: Event[EventStateChangedData]
+    ) -> None:
+        """Handle presence sensor changes.
+
+        Mirrors :meth:`_async_opening_changed`: a per-sensor debounce timeout
+        defers the evaluation, otherwise presence is applied immediately.
+        """
+        new_state = event.data.get("new_state")
+        _LOGGER.info("Presence changed: %s", new_state)
+        if new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return
+
+        presence_entity = event.data.get("entity_id")
+        # get the relevant debounce timeout for the new state
+        presence_timeout = None
+        for presence in self.presence.presence:
+            if presence_entity == presence[ATTR_ENTITY_ID]:
+                if new_state.state in (STATE_ON, STATE_HOME):
+                    presence_timeout = presence.get(ATTR_PRESENCE_TIMEOUT)
+                else:
+                    presence_timeout = presence.get(ATTR_ABSENCE_TIMEOUT)
+                break
+
+        if presence_timeout is not None:
+            _LOGGER.debug(
+                "Scheduling presence evaluation for %s in %s",
+                presence_entity,
+                presence_timeout,
+            )
+            self.async_on_remove(
+                async_call_later(
+                    self.hass,
+                    presence_timeout,
+                    self._async_presence_evaluate_forced,
+                )
+            )
+        else:
+            await self._async_apply_presence()
+
+        self.async_write_ha_state()
+
+    async def _async_presence_evaluate_forced(self, *args) -> None:
+        """Re-evaluate presence after a debounce timeout elapsed."""
+        await self._async_apply_presence()
+        self.async_write_ha_state()
+
+    async def _async_apply_presence(self) -> None:
+        """Switch to the away preset on absence and restore it on return.
+
+        Presence sensing only acts when presets (including ``away``) are
+        configured. When presence is lost within the active scope the
+        previously selected preset is remembered and ``away`` is applied; when
+        presence returns the remembered preset is restored.
+        """
+        if not self.presence.presence_entities:
+            return
+
+        if not self.presets.has_presets:
+            return
+
+        if PRESET_AWAY not in self.presets.preset_modes:
+            _LOGGER.warning(
+                "Presence sensing is enabled but no 'away' preset is configured; "
+                "ignoring presence change"
+            )
+            return
+
+        presence_detected = self.presence.is_presence_detected(self._hvac_mode)
+        _LOGGER.debug(
+            "Applying presence: detected=%s, forced_away=%s, current_preset=%s",
+            presence_detected,
+            self._presence_forced_away,
+            self._attr_preset_mode,
+        )
+
+        if not presence_detected:
+            # Absence: switch to away, remembering the prior preset.
+            if self._attr_preset_mode != PRESET_AWAY:
+                self._presence_saved_preset = self._attr_preset_mode
+                self._presence_forced_away = True
+                await self.async_set_preset_mode(PRESET_AWAY)
+                self._hvac_action_reason = HVACActionReason.PRESENCE
+        elif self._presence_forced_away:
+            # Presence returned: restore the preset active before going away.
+            restore_preset = self._presence_saved_preset or PRESET_NONE
+            self._presence_forced_away = False
+            self._presence_saved_preset = None
+            if restore_preset in self.presets.preset_modes:
+                await self.async_set_preset_mode(restore_preset)
 
     async def _async_control_climate(self, time=None, force=False) -> None:
         """Control the climate device based on config."""

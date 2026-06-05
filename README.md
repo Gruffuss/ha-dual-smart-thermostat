@@ -36,6 +36,7 @@ The `dual_smart_thermostat` is an enhanced version of generic thermostat impleme
 | **Heat Pump Mode** | ![heat/cool](docs/images/sun-snowflake-custom.png) | [docs](#heat-pump-one-switch-heatcool-mode) |
 | **Floor Temperature Control** | ![heating-coil](docs/images/heating-coil-custom.png) ![snowflake-thermometer](docs/images/snowflake-thermometer-custom.png)  ![thermometer-alert](docs/images/thermometer-alert-custom.png) | [docs](#floor-heating-temperature-control) |
 | **Window/Door Sensor Integration (Openings)** | ![window-open](docs/images/window-open-custom.png)  ![window-open](docs/images/door-open-custom.png) ![chevron-right](docs/images/chevron-right-custom.png) ![timer-cog](docs/images/timer-cog-outline-custom.png)  ![chevron-right](docs/images/chevron-right-custom.png) ![hvac-off](docs/images/hvac-off-custom.png)| [docs](#openings) |
+| **Presence Sensing (Away on absence)** | | [docs](#presence) |
 | **Preset Modes Support** |  | [docs](#presets) |
 | **Auto Mode (Priority Engine)** | | [docs](#auto-mode) |
 | **HVAC Action Reason Tracking** | | [docs](#hvac-action-reason) |
@@ -597,6 +598,64 @@ climate:
 
 [all features ⤴️](#features)
 
+## Presence
+
+Presence sensing is the conceptual inverse of openings: instead of pausing the HVAC while a window is open, the `dual_smart_thermostat` switches to the `away` preset when nobody is present, and restores the previously active preset when presence returns.
+
+The `presence` configuration variable accepts a list of presence/occupancy `binary_sensor` entities (and/or objects). A sensor is considered *present* when its state is `on` (or `home`) and *absent* when `off`. If every available sensor reports absent, the thermostat activates the `away` preset.
+
+> [!NOTE]
+> Presence sensing requires an `away` preset to be configured — that is the preset it switches to. If a configured presence sensor becomes `unavailable`, it is treated as *present* so a sensor outage never forces the away preset.
+
+### Presence entities and objects
+
+A presence object can contain a `timeout` and an `absence_timeout` property. `timeout` is how long presence must persist before the previous preset is restored; `absence_timeout` is how long absence must persist before switching to `away`. These debounce short, spurious state changes.
+
+### Presence Scope
+
+The `presence_scope` configuration variable limits **when the automatic switch to `away` is triggered**, based on the HVAC mode the thermostat is operating in *at the moment presence is lost*. If set to `all` or not defined, absence triggers the away switch in any mode.
+
+```yaml
+presence_scope: [heat, cool]
+```
+
+> [!NOTE]
+> Scope does **not** make the `away` preset itself mode-specific — a preset always retargets whichever mode is active, so there is no such thing as an "away preset for heating only". The only thing `presence_scope` controls is *whether the away switch fires* while you happen to be running in a given mode (for example, `[heat, cool]` means "don't auto-go-away while in fan-only or dry mode"). It is evaluated when a presence sensor changes (and at startup), not when you change the HVAC mode. If you don't have a specific reason to restrict it, leave it unset.
+
+### Presence Configuration
+
+```yaml
+# Example configuration.yaml entry
+climate:
+  - platform: dual_smart_thermostat
+    name: Study
+    heater: switch.study_heater
+    cooler: switch.study_cooler
+    target_sensor: sensor.study_temperature
+    away:
+      temperature: 16 # required: the preset presence switches to
+    home:
+      temperature: 21
+    presence:
+      # plain entity id (string form) - no debounce, reacts immediately
+      - binary_sensor.living_room_occupancy
+      # object form with only the absent debounce
+      - entity_id: binary_sensor.hallway_occupancy
+        absence_timeout: 00:02:00                   # wait 2min of absence before switching to away
+      # object form with only the present debounce
+      - entity_id: binary_sensor.office_occupancy
+        timeout: 00:00:30                           # wait 30s of presence before restoring the previous preset
+      # object form with both debounce timeouts
+      - entity_id: binary_sensor.bedroom_occupancy
+        timeout: 00:00:30
+        absence_timeout: 00:02:00
+    presence_scope: [heat, cool]                    # optional; only auto-switch to away while in these modes (see note below). Omit to allow any mode
+```
+
+Both `timeout` (present debounce) and `absence_timeout` (absent debounce) are optional and independent — set either, both, or neither. Omitting a timeout means that transition is applied immediately.
+
+[all features ⤴️](#features)
+
 ## Floor heating temperature control
 
 The `dual_smart_thermostat` can control the floor heating temperature. The thermostat can turn off if the floor heating reaches the maximum allowed temperature you define in order to protect the floor from overheating and damage.
@@ -933,6 +992,29 @@ The reason is grouped into three categories:
 ### openings_scope
 
   _(optional) (array[string])_  "The scope of the openings. If set to [`all`] or not defined, any open openings will turn off the current hvac device and it will be in the idle state. If set, only devices that operating in the defined HVAC modes will be turned off. For example, if set to `heat` only the heater will be turned off if any of the openings are open."
+
+  _default: `all`_
+
+  options:
+    - `all`
+    - `heat`
+    - `cool`
+    - `heat_cool`
+    - `fan_only`
+
+### presence
+
+  _(optional) (list)_  "list of presence/occupancy `binary_sensor` `entity_id`'s and/or objects. Presence sensing is the inverse of openings: when every available sensor reports absence, the thermostat switches to the `away` preset, and the previously active preset is restored when presence returns. Requires an `away` preset to be configured. If a sensor is `unavailable` it is treated as present, so a sensor outage never forces the away preset."
+
+  `entity_id: <value>` The entity id of the presence/occupancy sensor. Considered present when `on` (or `home`), absent when `off` (string)</br>
+
+  `timeout: <value>` The time presence must persist before the previous preset is restored (timedelta)</br>
+
+  `absence_timeout: <value>` The time absence must persist before switching to the `away` preset (timedelta)</br>
+
+### presence_scope
+
+  _(optional) (array[string])_  "Limits *when* the automatic switch to the `away` preset is triggered, based on the HVAC mode active at the moment presence is lost. If set to [`all`] or not defined, absence triggers the away switch in any mode. If set, the away switch only fires while operating in the listed modes (for example, `[heat, cool]` means absence is ignored while in fan-only or dry mode). Note: this does **not** make the `away` preset mode-specific — a preset always applies to the active mode — and it is only re-evaluated on presence sensor changes, not on HVAC mode changes."
 
   _default: `all`_
 
@@ -1310,6 +1392,36 @@ climate:
       - binary_sensor.window2
       - entity_id: binary_sensor.window3
         timeout: 00:00:30 # <-optional
+```
+
+## PRESENCE Example
+
+Presence sensing switches to the `away` preset when nobody is present, so an
+`away` preset is required. Every supported form is shown below: plain entity
+ids, objects with only `timeout`, only `absence_timeout`, or both, plus the
+optional `presence_scope`.
+
+```yaml
+climate:
+  - platform: dual_smart_thermostat
+    name: Study
+    heater: switch.study_heater
+    cooler: switch.study_cooler
+    target_sensor: sensor.study_temperature
+    away: # <-required: the preset presence switches to
+      temperature: 16
+    home: # <-optional: any preset restored when presence returns
+      temperature: 21
+    presence: # <-required
+      - binary_sensor.living_room_occupancy # string form, immediate
+      - entity_id: binary_sensor.hallway_occupancy
+        absence_timeout: 00:02:00 # <-optional: debounce going away
+      - entity_id: binary_sensor.office_occupancy
+        timeout: 00:00:30 # <-optional: debounce coming back
+      - entity_id: binary_sensor.bedroom_occupancy
+        timeout: 00:00:30 # <-optional
+        absence_timeout: 00:02:00 # <-optional
+    presence_scope: [heat, cool] # <-optional, default: all. Only gates *whether* the away switch fires while in these modes; it does not make the away preset mode-specific
 ```
 
 ## Tolerances

@@ -36,6 +36,7 @@ from .feature_steps import (
     FloorSteps,
     HumiditySteps,
     OpeningsSteps,
+    PresenceSteps,
     PresetsSteps,
 )
 from .flow_utils import EntityValidator
@@ -76,6 +77,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
 
         # Initialize feature step handlers
         self.openings_steps = OpeningsSteps()
+        self.presence_steps = PresenceSteps()
         self.fan_steps = FanSteps()
         self.humidity_steps = HumiditySteps()
         self.presets_steps = PresetsSteps()
@@ -96,8 +98,10 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
             "fan_options_shown",
             "humidity_options_shown",
             "openings_options_shown",
+            "presence_options_shown",
             "presets_shown",
             "configure_openings",
+            "configure_presence",
             "configure_presets",
             "configure_fan",
             "configure_humidity",
@@ -212,6 +216,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
             "fan_options_shown",
             "humidity_options_shown",
             "openings_options_shown",
+            "presence_options_shown",
             "presets_shown",
         }
         for flag in flow_control_flags:
@@ -599,6 +604,22 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
             self, user_input, self.collected_config, self._determine_next_step
         )
 
+    async def async_step_presence_selection(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle presence selection configuration."""
+        return await self.presence_steps.async_step_selection(
+            self, user_input, self.collected_config, self._determine_next_step
+        )
+
+    async def async_step_presence_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle presence timeout/scope configuration."""
+        return await self.presence_steps.async_step_config(
+            self, user_input, self.collected_config, self._determine_next_step
+        )
+
     async def async_step_heat_cool_mode(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -801,6 +822,15 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         ):
             return await self.async_step_openings_selection()
 
+        # Presence sensing - shown after openings. Its scope generation depends
+        # on the configured system features, exactly like openings. (The away
+        # preset it switches to is validated separately; see docs.)
+        if (
+            self.collected_config.get("configure_presence")
+            and "selected_presence" not in self.collected_config
+        ):
+            return await self.async_step_presence_selection()
+
         if (
             system_type == "floor_heating"
             and CONF_FLOOR_SENSOR not in self.collected_config
@@ -880,6 +910,12 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         ):
             feature_defaults["configure_openings"] = True
 
+        # Presence: detected by presence of presence list or selected_presence
+        if self.collected_config.get("presence") or self.collected_config.get(
+            "selected_presence"
+        ):
+            feature_defaults["configure_presence"] = True
+
         # Presets: detected by presence of any preset configuration
         # Check for preset-related keys in config
         preset_keys = [v for v in CONF_PRESETS.values()]
@@ -929,6 +965,13 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
             self.collected_config.pop("selected_openings", None)
             self.collected_config.pop("openings_scope", None)
             _LOGGER.debug("Openings unchecked - clearing openings config")
+
+        # Presence unchecked - clear presence list and related settings
+        if not user_input.get("configure_presence", False):
+            self.collected_config.pop("presence", None)
+            self.collected_config.pop("selected_presence", None)
+            self.collected_config.pop("presence_scope", None)
+            _LOGGER.debug("Presence unchecked - clearing presence config")
 
         # Presets unchecked - clear all preset-related configuration
         if not user_input.get("configure_presets", False):
