@@ -211,7 +211,11 @@ class GenericHvacController(HvacController):
                 self._hvac_action_reason = HVACActionReason.OPENING
         else:
             _LOGGER.debug("No case matched when - keeping device off")
-            if strategy.hvac_goal_reached:
+            if strategy.hvac_goal_not_reached and any_opening_open:
+                # The device is kept off because an opening blocks the wanted
+                # action (e.g. window open while the room needs cooling).
+                self._hvac_action_reason = HVACActionReason.OPENING
+            elif strategy.hvac_goal_reached:
                 self._hvac_action_reason = strategy.goal_reached_reason()
             else:
                 self._hvac_action_reason = strategy.goal_not_reached_reason()

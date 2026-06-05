@@ -1368,6 +1368,77 @@ async def test_cooler_mode_opening_hvac_action_reason(
     )
 
 
+async def test_cooler_mode_opening_open_while_off_hvac_action_reason(
+    hass: HomeAssistant, setup_comp_1  # noqa: F811
+) -> None:
+    """Opening should be reported as the reason when it blocks an idle AC.
+
+    Reproduces the case where the window is already open while the AC is off
+    (room cooler than target), and then the room heats above the setpoint so
+    cooling becomes wanted. The off-path control must report OPENING, not
+    TARGET_TEMP_NOT_REACHED.
+    """
+    cooler_switch = "input_boolean.test"
+    opening_1 = "input_boolean.opening_1"
+
+    assert await async_setup_component(
+        hass,
+        input_boolean.DOMAIN,
+        {"input_boolean": {"test": None, "opening_1": None}},
+    )
+
+    assert await async_setup_component(
+        hass,
+        input_number.DOMAIN,
+        {
+            "input_number": {
+                "temp": {"name": "test", "initial": 10, "min": 0, "max": 40, "step": 1}
+            }
+        },
+    )
+
+    assert await async_setup_component(
+        hass,
+        CLIMATE,
+        {
+            "climate": {
+                "platform": DOMAIN,
+                "name": "test",
+                "heater": cooler_switch,
+                "ac_mode": "true",
+                "target_sensor": common.ENT_SENSOR,
+                "initial_hvac_mode": HVACMode.COOL,
+                "openings": [opening_1],
+            }
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Room is cooler than target: goal reached, AC stays off.
+    setup_sensor(hass, 18)
+    await hass.async_block_till_done()
+    await common.async_set_temperature(hass, 23)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(cooler_switch).state == STATE_OFF
+
+    # Window is opened while the AC is idle (off-path, not on-path).
+    setup_boolean(hass, opening_1, "open")
+    await hass.async_block_till_done()
+
+    # Room now heats above the setpoint: cooling is wanted but the window blocks it.
+    setup_sensor(hass, 25)
+    await hass.async_block_till_done()
+
+    # AC must stay off because of the open window...
+    assert hass.states.get(cooler_switch).state == STATE_OFF
+    # ...and the reason must reflect that the opening is blocking it.
+    assert (
+        hass.states.get(common.ENTITY).attributes.get(ATTR_HVAC_ACTION_REASON)
+        == HVACActionReason.OPENING
+    )
+
+
 #######################
 #  HVAC POWER VALUES  #
 #######################
