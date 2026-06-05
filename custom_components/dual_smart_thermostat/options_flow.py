@@ -56,6 +56,7 @@ from .feature_steps import (
     FloorSteps,
     HumiditySteps,
     OpeningsSteps,
+    PresenceSteps,
     PresetsSteps,
 )
 from .schema_utils import get_tolerance_selector
@@ -80,6 +81,7 @@ class OptionsFlowHandler(OptionsFlow):
 
         # Initialize feature step handlers
         self.openings_steps = OpeningsSteps()
+        self.presence_steps = PresenceSteps()
         self.fan_steps = FanSteps()
         self.humidity_steps = HumiditySteps()
         self.presets_steps = PresetsSteps()
@@ -99,8 +101,10 @@ class OptionsFlowHandler(OptionsFlow):
             "fan_options_shown",
             "humidity_options_shown",
             "openings_options_shown",
+            "presence_options_shown",
             "presets_shown",
             "configure_openings",
+            "configure_presence",
             "configure_presets",
             "configure_fan",
             "configure_humidity",
@@ -532,6 +536,7 @@ class OptionsFlowHandler(OptionsFlow):
                 "fan_options_shown",
                 "humidity_options_shown",
                 "openings_options_shown",
+                "presence_options_shown",
                 "presets_shown",
             ]
             for flag in step_flags:
@@ -607,6 +612,14 @@ class OptionsFlowHandler(OptionsFlow):
         ):
             self.collected_config["openings_options_shown"] = True
             return await self.async_step_openings_options()
+
+        # Show presence options only if presence sensing is already configured
+        if (
+            current_config.get("presence")
+            and "presence_options_shown" not in self.collected_config
+        ):
+            self.collected_config["presence_options_shown"] = True
+            return await self.async_step_presence_options()
 
         # Show preset configuration only if presets are already configured
         # Check both "presets" list and preset temperature keys
@@ -815,6 +828,36 @@ class OptionsFlowHandler(OptionsFlow):
         submission and advance the flow.
         """
         return await self.openings_steps.async_step_options(
+            self,
+            user_input,
+            self.collected_config,
+            self._determine_options_next_step,
+            self._get_merged_config(),
+        )
+
+    async def async_step_presence_options(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle presence options."""
+        return await self.presence_steps.async_step_options(
+            self,
+            user_input,
+            self.collected_config,
+            self._determine_options_next_step,
+            self._get_merged_config(),
+        )
+
+    async def async_step_presence_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle the detailed presence config step submissions.
+
+        The PresenceSteps helper renders the detailed form using the step id
+        `presence_config`; Home Assistant calls `async_step_presence_config`
+        on the flow handler when that form is submitted, so we delegate back
+        to the helper to process the submission and advance the flow.
+        """
+        return await self.presence_steps.async_step_options(
             self,
             user_input,
             self.collected_config,
