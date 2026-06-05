@@ -51,6 +51,19 @@ class ConfigValidator:
             "hvac_power_tolerance": "hvac_power_levels",
         }
 
+        # Parameters that only apply when another parameter has a specific value.
+        # Unlike conditional_dependencies these don't require the controlling
+        # parameter to merely be present (it usually has a default) but to hold
+        # one of the listed values; otherwise the parameter is simply ignored.
+        # Maps param -> (controlling_param, [allowed_values]).
+        self.value_conditional_dependencies = {
+            "pwm_cycle_duration": ("heater_control_mode", ["tpi", "ai"]),
+            "tpi_coef_int": ("heater_control_mode", ["tpi"]),
+            "tpi_coef_ext": ("heater_control_mode", ["tpi"]),
+            "ai_initial_heating_power": ("heater_control_mode", ["ai"]),
+            "valve_maintenance_interval": ("valve_maintenance", [True]),
+        }
+
         self.conflicts = [
             (
                 "heater",
@@ -82,6 +95,20 @@ class ConfigValidator:
                 if required_param not in config or config[required_param] is None:
                     errors.append(
                         f"Parameter '{param}' requires '{required_param}' to be configured"
+                    )
+
+        # Check value-conditioned dependencies (parameter is ignored unless the
+        # controlling parameter holds one of the allowed values).
+        for param, (
+            required_param,
+            allowed,
+        ) in self.value_conditional_dependencies.items():
+            if param in config and config[param] is not None:
+                actual = config.get(required_param)
+                if actual not in allowed:
+                    warnings.append(
+                        f"Parameter '{param}' only applies when '{required_param}' is "
+                        f"one of {allowed} (got {actual!r}); it will be ignored"
                     )
 
         # Check conflicts
