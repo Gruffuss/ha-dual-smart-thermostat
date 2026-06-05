@@ -94,6 +94,36 @@
       "required_parameter": "hvac_power_levels",
       "description": "Power tolerance only works when power levels are defined",
       "example": "hvac_power_levels: 5 \u2192 hvac_power_tolerance: 0.5"
+    },
+    "pwm_cycle_duration": {
+      "required_parameter": "heater_control_mode",
+      "required_value": ["tpi", "ai"],
+      "description": "PWM cycle duration only applies to proportional heater control (tpi or ai)",
+      "example": "heater_control_mode: tpi \u2192 pwm_cycle_duration: 1800"
+    },
+    "tpi_coef_int": {
+      "required_parameter": "heater_control_mode",
+      "required_value": ["tpi"],
+      "description": "TPI internal coefficient only applies when heater_control_mode is tpi",
+      "example": "heater_control_mode: tpi \u2192 tpi_coef_int: 0.6"
+    },
+    "tpi_coef_ext": {
+      "required_parameter": "heater_control_mode",
+      "required_value": ["tpi"],
+      "description": "TPI external coefficient only applies when heater_control_mode is tpi (and needs outside_sensor to have effect)",
+      "example": "heater_control_mode: tpi \u2192 tpi_coef_ext: 0.01"
+    },
+    "ai_initial_heating_power": {
+      "required_parameter": "heater_control_mode",
+      "required_value": ["ai"],
+      "description": "AI initial heating power only applies when heater_control_mode is ai",
+      "example": "heater_control_mode: ai \u2192 ai_initial_heating_power: 0.01"
+    },
+    "valve_maintenance_interval": {
+      "required_parameter": "valve_maintenance",
+      "required_value": [true],
+      "description": "Valve maintenance interval only applies when valve_maintenance is enabled",
+      "example": "valve_maintenance: true \u2192 valve_maintenance_interval: 7"
     }
   },
   "dependency_groups": {

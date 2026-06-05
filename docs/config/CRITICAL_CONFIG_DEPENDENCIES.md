@@ -224,6 +224,47 @@ hvac_power_tolerance: 0.5  # ← Only works with hvac_power_levels
 
 ---
 
+### 🔆 Heater Control Mode Dependencies (Value-Conditioned)
+
+**Enabling Parameter**: `heater_control_mode`
+
+Unlike the dependencies above, these are conditioned on the *value* of `heater_control_mode` (which defaults to `bang_bang`). The parameters are ignored unless the mode is set appropriately:
+
+| Parameter | Applies when | Description | Example |
+|-----------|--------------|-------------|---------|
+| `pwm_cycle_duration` | `heater_control_mode` is `tpi` or `ai` | PWM cycle length (seconds) | `1800` |
+| `tpi_coef_int` | `heater_control_mode` is `tpi` | TPI internal (room-error) coefficient | `0.6` |
+| `tpi_coef_ext` | `heater_control_mode` is `tpi` | TPI external (outdoor-gradient) coefficient | `0.01` |
+| `ai_initial_heating_power` | `heater_control_mode` is `ai` | Initial heating-power estimate (°C/min) | `0.01` |
+
+**Configuration Example**:
+```yaml
+heater_control_mode: tpi
+pwm_cycle_duration: 1800   # ← Only applies with tpi or ai
+tpi_coef_int: 0.6          # ← Only applies with tpi
+tpi_coef_ext: 0.01         # ← Only applies with tpi (and needs outside_sensor)
+```
+
+> `tpi_coef_ext` additionally requires `outside_sensor` to have any effect.
+
+---
+
+### 🛠️ Valve Maintenance Dependencies
+
+**Enabling Parameter**: `valve_maintenance`
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `valve_maintenance_interval` | Days between maintenance cycles | `7` |
+
+**Configuration Example**:
+```yaml
+valve_maintenance: true
+valve_maintenance_interval: 7  # ← Only applies when valve_maintenance is true
+```
+
+---
+
 ## ⚠️ Critical Conflicts (3 Total)
 
 These parameters **cannot** have the same values or conflict with each other:

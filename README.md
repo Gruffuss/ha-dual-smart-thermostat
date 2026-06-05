@@ -29,6 +29,9 @@ The `dual_smart_thermostat` is an enhanced version of generic thermostat impleme
 | **Fan Only Mode** | ![fan](/docs/images/fan-custom.png) | [docs](#fan-only-mode) |
 | **Fan With Cooler Mode** | ![fan](/docs/images/fan-custom.png)  ![cool](/docs/images/snowflake-custom.png) | [docs](#fan-with-cooler-mode) |
 | **Fan Speed Control** | ![fan](/docs/images/fan-custom.png) | [docs](#fan-speed-control) |
+| **Climate Entity as Cooler (Wrapped AC)** | ![cool](/docs/images/snowflake-custom.png) | [docs](#climate-entity-as-cooler) |
+| **Heater Control Modes (TPI / AI Time Based)** | ![heating](/docs/images/fire-custom.png) | [docs](#heater-control-modes-tpi--ai-time-based) |
+| **Valve Maintenance (Anti-Stick)** | ![heating-coil](docs/images/heating-coil-custom.png) | [docs](#valve-maintenance-anti-stick) |
 | **Dry Mode (Humidity Control)** | ![humidity](docs/images/water-percent-custom.png) | [docs](#dry-mode) |
 | **Heat Pump Mode** | ![heat/cool](docs/images/sun-snowflake-custom.png) | [docs](#heat-pump-one-switch-heatcool-mode) |
 | **Floor Temperature Control** | ![heating-coil](docs/images/heating-coil-custom.png) ![snowflake-thermometer](docs/images/snowflake-thermometer-custom.png)  ![thermometer-alert](docs/images/thermometer-alert-custom.png) | [docs](#floor-heating-temperature-control) |
@@ -381,6 +384,91 @@ If only the [`cooler`](#cooler) entity is set, the thermostat works only in cool
 
 [all features ⤴️](#features)
 
+## Climate Entity as Cooler
+
+In **Heat/Cool mode** the [`cooler`](#cooler) can be a full `climate` entity (for example a smart AC such as a Gree, Daikin or Midea unit) instead of an on/off switch. This lets a single thermostat drive a switch-based heater (e.g. an underfloor heating valve) for heating and a wrapped AC for cooling, so you only manage one entity per room.
+
+The thermostat owns the cooling decision based on the room [`target_sensor`](#target_sensor) and commands the wrapped AC via `climate.set_hvac_mode` / `climate.set_temperature`. The AC's **fan speed and swing** are passed through and exposed on the thermostat, so you can change them from the same card. The wrapped entity's capabilities are detected automatically, and if it is unavailable (for example offline at startup) its controls are surfaced once it comes online.
+
+### Climate Entity as Cooler Example
+
+```yaml
+climate:
+  - platform: dual_smart_thermostat
+    name: Living Room
+    heater: switch.underfloor_valve   # switch-based heater
+    cooler: climate.living_room_ac    # a full climate entity (e.g. a Gree AC)
+    target_sensor: sensor.living_room_temperature
+    heat_cool_mode: true
+```
+
+> The `cooler` accepts a `switch`, `input_boolean`, or `climate` entity. When a `climate` entity is used, its fan/swing modes are mirrored on the thermostat.
+
+[all features ⤴️](#features)
+
+## Heater Control Modes (TPI / AI Time Based)
+
+By default the heater switch is driven with simple **bang-bang** (on/off hysteresis) control. For slow, high-thermal-mass systems like underfloor heating you can instead drive the valve with a **time-proportional (PWM) duty cycle** so it spends part of each cycle open and part closed. Set the mode with [`heater_control_mode`](#heater_control_mode):
+
+- **`bang_bang`** _(default)_ – classic on/off control using the tolerances. No change to existing behaviour.
+- **`tpi`** – Time Proportional Integral. Each cycle the duty is computed from the room error and (optionally) the outdoor temperature: `duty = tpi_coef_int·(target − current) + tpi_coef_ext·(target − outdoor)`. The valve is then held open for `duty × pwm_cycle_duration` and closed for the rest of the cycle.
+- **`ai`** – AI Time Based. Like TPI but self-learning: the thermostat continuously estimates your room's heating power (°C/min) and heat-loss rate from observed cycles and derives the duty from the learned model. It needs roughly **2–3 days** to settle. Learned values are persisted across restarts and exposed as the `heating_power` and `heat_loss` attributes; the current duty is exposed as `heater_duty_cycle`.
+
+The PWM cycle length is set with [`pwm_cycle_duration`](#pwm_cycle_duration) (default 30 minutes, well suited to underfloor loops). [`min_cycle_duration`](#min_cycle_duration) is honoured as the minimum on/off segment so the relay never chatters. These modes apply to the heater switch of `simple_heater` and `heater_cooler` systems.
+
+### TPI Example
+
+```yaml
+climate:
+  - platform: dual_smart_thermostat
+    name: Underfloor
+    heater: switch.underfloor_valve
+    target_sensor: sensor.room_temperature
+    outside_sensor: sensor.outdoor_temperature   # optional, enables the coef_ext term
+    heater_control_mode: tpi
+    pwm_cycle_duration: 1800   # seconds (30 min)
+    tpi_coef_int: 0.6
+    tpi_coef_ext: 0.01
+```
+
+### AI Time Based Example
+
+```yaml
+climate:
+  - platform: dual_smart_thermostat
+    name: Underfloor
+    heater: switch.underfloor_valve
+    target_sensor: sensor.room_temperature
+    outside_sensor: sensor.outdoor_temperature   # optional, improves learning
+    heater_control_mode: ai
+    pwm_cycle_duration: 1800
+    ai_initial_heating_power: 0.01   # starting estimate, refined automatically
+```
+
+> Tip: start with `ai` for underfloor heating, leave it for a few days, then watch the `heating_power` and `heater_duty_cycle` attributes converge. Use the [`reset_heating_power`](#reset-heating-power) service to clear the learned model and start over.
+
+[all features ⤴️](#features)
+
+## Valve Maintenance (Anti-Stick)
+
+Heating valves that sit unused all summer can seize. With [`valve_maintenance`](#valve_maintenance) enabled, the thermostat periodically exercises the heater switch — opening and closing it a couple of times — **regardless of season or HVAC mode**, then restores the prior state. Normal control is suspended for the short cycle so nothing fights it.
+
+The cycle runs every [`valve_maintenance_interval`](#valve_maintenance_interval) days (default 7), with a small random offset so multiple thermostats don't all run at once. You can also trigger a cycle on demand with the [`run_valve_maintenance`](#run-valve-maintenance) service.
+
+### Valve Maintenance Example
+
+```yaml
+climate:
+  - platform: dual_smart_thermostat
+    name: Underfloor
+    heater: switch.underfloor_valve
+    target_sensor: sensor.room_temperature
+    valve_maintenance: true
+    valve_maintenance_interval: 7   # days
+```
+
+[all features ⤴️](#features)
+
 ## Dry mode
 
 If the [`dryer`](#dryer) entity is set, the thermostat can switch to dry mode. The dryer will turn on when the humidity is above the target humidity and the [`moist_tolerance`](#moist_tolerance) is not reached. If the humidity is above the target humidity and the [`moist_tolerance`](#moist_tolerance) is reached, the dryer will stop.
@@ -696,6 +784,22 @@ The reason is grouped into three categories:
 
 > The service updates both the deprecated `hvac_action_reason` state attribute and the new `sensor.<climate_name>_hvac_action_reason` entity. Automations reading either surface continue to work.
 
+### Reset Heating Power
+
+`dual_smart_thermostat.reset_heating_power` clears the learned model (heating power / heat loss) of a thermostat using the [`ai`](#heater_control_mode) heater control mode, so it relearns from scratch. Has no effect on other control modes.
+
+| Parameter | Description | Type | Required |
+|-----------|-------------|------|----------|
+| entity_id | The entity id of the thermostat | string | yes |
+
+### Run Valve Maintenance
+
+`dual_smart_thermostat.run_valve_maintenance` immediately runs a [valve maintenance](#valve-maintenance-anti-stick) cycle (open/close pulses on the heater switch, then restore the prior state). It works even when scheduled `valve_maintenance` is disabled, as long as a heater switch is configured — useful for testing the valve out of season.
+
+| Parameter | Description | Type | Required |
+|-----------|-------------|------|----------|
+| entity_id | The entity id of the thermostat | string | yes |
+
 ## Configuration variables
 
 ### name
@@ -728,7 +832,7 @@ The reason is grouped into three categories:
 
 ### cooler
 
-  _(optional) (string)_ "`entity_id` for cooler switch, must be a toggle device."
+  _(optional) (string)_ "`entity_id` for the cooler. May be a toggle device (`switch` / `input_boolean`) or a full `climate` entity such as a smart AC — see [Climate Entity as Cooler](#climate-entity-as-cooler). Becomes ignored when `ac_mode` uses the `heater` entity for cooling."
 
 ### fan_mode
 
@@ -893,6 +997,48 @@ The reason is grouped into three categories:
 ### min_cycle_duration
 
   _(optional) (time, integer)_  Set a minimum amount of time that the switch specified in the _heater_  and/or _cooler_ option must be in its current state prior to being switched either off or on. This option will be ignored if the `keep_alive` option is set.
+
+### heater_control_mode
+
+  _(optional) (string)_ How the heater switch is driven. One of `bang_bang`, `tpi`, or `ai`. See [Heater Control Modes](#heater-control-modes-tpi--ai-time-based).
+
+  _default: bang_bang_
+
+### pwm_cycle_duration
+
+  _(optional, **used when `heater_control_mode` is `tpi` or `ai`**) (integer, seconds)_ Length of one PWM cycle for proportional heating control. The valve is open for `duty × pwm_cycle_duration` and closed for the rest.
+
+  _default: 1800 (30 minutes)_
+
+### tpi_coef_int
+
+  _(optional, **used when `heater_control_mode` is `tpi`**) (float)_ Weight on the room error (`target − current`) in the TPI duty calculation. Higher values react more strongly to the temperature difference.
+
+  _default: 0.6_
+
+### tpi_coef_ext
+
+  _(optional, **used when `heater_control_mode` is `tpi`**) (float)_ Weight on the outdoor gradient (`target − outdoor`) in the TPI duty calculation, compensating for heat loss. Requires [`outside_sensor`](#outside_sensor) to have any effect.
+
+  _default: 0.01_
+
+### ai_initial_heating_power
+
+  _(optional, **used when `heater_control_mode` is `ai`**) (float, °C/min)_ Starting estimate of the room's heating power before the model has learned. Learning refines it automatically over 2–3 days.
+
+  _default: 0.01_
+
+### valve_maintenance
+
+  _(optional) (bool)_ When `true`, periodically exercises the heater valve to prevent it seizing — see [Valve Maintenance](#valve-maintenance-anti-stick).
+
+  _default: false_
+
+### valve_maintenance_interval
+
+  _(optional, **used when `valve_maintenance` is `true`**) (integer, days)_ How often to run the valve maintenance cycle.
+
+  _default: 7_
 
 ### cold_tolerance
 
