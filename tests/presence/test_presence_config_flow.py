@@ -126,6 +126,68 @@ async def test_presence_with_timeouts_and_scope(mock_hass):
     assert flow.collected_config[CONF_PRESENCE_SCOPE] == "heat"
 
 
+async def test_options_flow_drops_default_all_scope(mock_hass):
+    """The options flow must drop a default ``"all"`` scope, like the config
+    flow, so it is never persisted as a bare string.
+
+    Regression: persisting ``presence_scope`` as the string ``"all"`` later
+    crashed PresenceManager on a None hvac mode at startup.
+    """
+    from custom_components.dual_smart_thermostat.feature_steps.presence import (
+        PresenceSteps,
+    )
+
+    steps = PresenceSteps()
+    collected: dict = {}
+
+    async def next_step():
+        return {"done": True}
+
+    await steps.async_step_options(
+        flow_instance=Mock(),
+        user_input={
+            "selected_presence": ["binary_sensor.a"],
+            CONF_PRESENCE_SCOPE: "all",
+            "presence_1_timeout_present": 0,
+            "presence_1_timeout_absent": 0,
+        },
+        collected_config=collected,
+        next_step_handler=next_step,
+        current_config={},
+    )
+
+    assert CONF_PRESENCE not in collected or collected[CONF_PRESENCE]
+    assert CONF_PRESENCE_SCOPE not in collected
+
+
+async def test_options_flow_keeps_specific_scope(mock_hass):
+    """A non-default scope chosen in the options flow is persisted."""
+    from custom_components.dual_smart_thermostat.feature_steps.presence import (
+        PresenceSteps,
+    )
+
+    steps = PresenceSteps()
+    collected: dict = {}
+
+    async def next_step():
+        return {"done": True}
+
+    await steps.async_step_options(
+        flow_instance=Mock(),
+        user_input={
+            "selected_presence": ["binary_sensor.a"],
+            CONF_PRESENCE_SCOPE: "heat",
+            "presence_1_timeout_present": 0,
+            "presence_1_timeout_absent": 0,
+        },
+        collected_config=collected,
+        next_step_handler=next_step,
+        current_config={},
+    )
+
+    assert collected[CONF_PRESENCE_SCOPE] == "heat"
+
+
 async def test_presence_disabled_not_in_config(mock_hass):
     """When presence is not enabled the flow skips it entirely."""
     flow = ConfigFlowHandler()

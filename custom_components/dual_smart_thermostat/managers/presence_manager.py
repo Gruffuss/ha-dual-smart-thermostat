@@ -55,9 +55,16 @@ class PresenceManager:
         self.hass = hass
 
         presence = config.get(CONF_PRESENCE)
-        self.presence_scope: List[PresenceHvacModeScope] = config.get(
-            CONF_PRESENCE_SCOPE
-        ) or [PresenceHvacModeScope.ALL]
+        # The scope may arrive as a single string (YAML's ``vol.Any`` form or a
+        # flow that persisted the raw selector value) or a list. Normalize to a
+        # list so membership checks never run against a bare string (which would
+        # do substring matching and raise on a None hvac mode at startup).
+        scope = config.get(CONF_PRESENCE_SCOPE)
+        if isinstance(scope, str):
+            scope = [scope]
+        self.presence_scope: List[PresenceHvacModeScope] = scope or [
+            PresenceHvacModeScope.ALL
+        ]
 
         self.presence = self.conform_presence_list(presence) if presence else []
         self.presence_entities = (

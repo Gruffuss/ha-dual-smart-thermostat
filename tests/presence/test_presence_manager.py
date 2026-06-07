@@ -109,6 +109,55 @@ async def test_scope_limits_modes(hass):
 
 
 @pytest.mark.asyncio
+async def test_string_scope_all_with_none_mode_is_normalized(hass):
+    """A scope persisted as the bare string ``"all"`` plus a ``None`` hvac mode
+    at startup must not raise.
+
+    Regression: the config/options flow can persist ``presence_scope`` as a
+    plain string (not a list). Combined with ``self._hvac_mode is None`` during
+    ``async_added_to_hass`` this made ``hvac_mode_scope in self.presence_scope``
+    evaluate ``None in "all"``, raising ``TypeError`` and failing every
+    thermostat's entity setup.
+    """
+    config = {
+        CONF_PRESENCE: [{"entity_id": "binary_sensor.presence"}],
+        CONF_PRESENCE_SCOPE: "all",
+    }
+    manager = PresenceManager(hass, config)
+    assert manager.presence_scope == [PresenceHvacModeScope.ALL]
+
+    hass.states.async_set("binary_sensor.presence", "off")
+    await hass.async_block_till_done()
+
+    # Must not raise; "all" scope covers every mode, including the startup None.
+    assert manager.is_presence_detected(None) is False
+
+    hass.states.async_set("binary_sensor.presence", "on")
+    await hass.async_block_till_done()
+    assert manager.is_presence_detected(None) is True
+
+
+@pytest.mark.asyncio
+async def test_string_scope_specific_mode_is_normalized(hass):
+    """A scope persisted as a single string (e.g. ``"cool"``) behaves like the
+    list form: in-scope absence is honored, out-of-scope is always present."""
+    config = {
+        CONF_PRESENCE: [{"entity_id": "binary_sensor.presence"}],
+        CONF_PRESENCE_SCOPE: "cool",
+    }
+    manager = PresenceManager(hass, config)
+    assert manager.presence_scope == [PresenceHvacModeScope.COOL]
+
+    hass.states.async_set("binary_sensor.presence", "off")
+    await hass.async_block_till_done()
+
+    assert manager.is_presence_detected(PresenceHvacModeScope.COOL) is False
+    assert manager.is_presence_detected(PresenceHvacModeScope.HEAT) is True
+    # A None mode out of a specific scope is the safe present default.
+    assert manager.is_presence_detected(None) is True
+
+
+@pytest.mark.asyncio
 async def test_conform_helpers(hass):
     """Plain entity ids and dicts are both normalized to the dict form."""
     manager = PresenceManager(

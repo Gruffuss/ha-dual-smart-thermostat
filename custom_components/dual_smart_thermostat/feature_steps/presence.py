@@ -265,6 +265,9 @@ class PresenceSteps:
                 collected_config.pop(CONF_PRESENCE_SCOPE, None)
 
             collected_config.update(user_input)
+            # Drop a default "all" scope so it is never persisted as a bare
+            # string (mirrors the config flow's async_step_config).
+            PresenceProcessor.clean_presence_scope(collected_config)
             return await self._call_next_step(next_step_handler)
 
         current_presence = current_config.get(CONF_PRESENCE, [])
