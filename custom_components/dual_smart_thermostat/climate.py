@@ -31,7 +31,6 @@ from homeassistant.const import (
     PRECISION_HALVES,
     PRECISION_TENTHS,
     PRECISION_WHOLE,
-    STATE_HOME,
     STATE_ON,
     STATE_OPEN,
     STATE_UNAVAILABLE,
@@ -40,6 +39,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import (
+    CALLBACK_TYPE,
     CoreState,
     Event,
     EventStateChangedData,
@@ -67,7 +67,6 @@ import voluptuous as vol
 from . import DOMAIN, PLATFORMS
 from .config_validation import validate_config_with_models
 from .const import (
-    ATTR_ABSENCE_TIMEOUT,
     ATTR_CLOSING_TIMEOUT,
     ATTR_FAN_MODE,
     ATTR_HEAT_LOSS,
@@ -78,7 +77,6 @@ from .const import (
     ATTR_HVAC_POWER_PERCENT,
     ATTR_LAST_HVAC_MODE,
     ATTR_OPENING_TIMEOUT,
-    ATTR_PRESENCE_TIMEOUT,
     ATTR_PREV_HUMIDITY,
     ATTR_PREV_TARGET,
     ATTR_PREV_TARGET_HIGH,
@@ -660,6 +658,10 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         # which preset was active beforehand so it can be restored on return.
         self._presence_forced_away = False
         self._presence_saved_preset: str | None = None
+        # Pending presence debounce timer (either an absence -> away countdown
+        # or a presence -> restore countdown) and which direction it is for.
+        self._presence_timer_remove: CALLBACK_TYPE | None = None
+        self._presence_timer_to_away: bool | None = None
 
         # power manager
         self.power_manager = power_manager
@@ -984,6 +986,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
                     self._async_presence_changed,
                 )
             )
+            # Make sure a pending presence countdown is cancelled on teardown.
+            self.async_on_remove(self._cancel_presence_timer)
             # Evaluate presence once on startup so a system that boots while
             # nobody is home immediately reflects the away preset.
             await self._async_apply_presence()
@@ -1925,45 +1929,77 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
     ) -> None:
         """Handle presence sensor changes.
 
-        Mirrors :meth:`_async_opening_changed`: a per-sensor debounce timeout
-        defers the evaluation, otherwise presence is applied immediately.
+        The debounce is applied to the *aggregate* occupancy rather than per
+        sensor. Both directions are debounced: switching to ``away`` waits until
+        the whole room has been empty for the absence timeout, and restoring the
+        prior preset waits until presence has persisted for the presence timeout
+        (so a momentary blip does not pull the thermostat out of ``away``).
         """
         new_state = event.data.get("new_state")
         _LOGGER.info("Presence changed: %s", new_state)
         if new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             return
 
-        presence_entity = event.data.get("entity_id")
-        # get the relevant debounce timeout for the new state
-        presence_timeout = None
-        for presence in self.presence.presence:
-            if presence_entity == presence[ATTR_ENTITY_ID]:
-                if new_state.state in (STATE_ON, STATE_HOME):
-                    presence_timeout = presence.get(ATTR_PRESENCE_TIMEOUT)
-                else:
-                    presence_timeout = presence.get(ATTR_ABSENCE_TIMEOUT)
-                break
-
-        if presence_timeout is not None:
-            _LOGGER.debug(
-                "Scheduling presence evaluation for %s in %s",
-                presence_entity,
-                presence_timeout,
-            )
-            self.async_on_remove(
-                async_call_later(
-                    self.hass,
-                    presence_timeout,
-                    self._async_presence_evaluate_forced,
-                )
-            )
-        else:
-            await self._async_apply_presence()
-
+        await self._async_evaluate_presence()
         self.async_write_ha_state()
 
-    async def _async_presence_evaluate_forced(self, *args) -> None:
-        """Re-evaluate presence after a debounce timeout elapsed."""
+    def _cancel_presence_timer(self) -> None:
+        """Cancel a pending presence debounce countdown, if any."""
+        if self._presence_timer_remove is not None:
+            self._presence_timer_remove()
+            self._presence_timer_remove = None
+        self._presence_timer_to_away = None
+
+    async def _async_evaluate_presence(self) -> None:
+        """Debounce the aggregate occupancy in both directions.
+
+        Going to ``away`` is deferred until every sensor has been absent for
+        :attr:`PresenceManager.absence_timeout_seconds`, measured from when the
+        room became empty. Restoring the prior preset is deferred until presence
+        has persisted for :attr:`PresenceManager.presence_timeout_seconds`. An
+        already-running countdown for the same direction is left untouched so
+        unrelated sensor toggles do not restart it.
+        """
+        detected = self.presence.is_presence_detected(self._hvac_mode)
+
+        if detected:
+            # Nothing to do unless presence is currently holding the away preset.
+            if not self._presence_forced_away:
+                self._cancel_presence_timer()
+                return
+            want_away = False
+            timeout = self.presence.presence_timeout_seconds
+        else:
+            want_away = True
+            timeout = self.presence.absence_timeout_seconds
+
+        if not timeout:
+            self._cancel_presence_timer()
+            await self._async_apply_presence()
+            return
+
+        # Let an in-flight countdown for the same direction run to completion.
+        if (
+            self._presence_timer_remove is not None
+            and self._presence_timer_to_away == want_away
+        ):
+            return
+
+        self._cancel_presence_timer()
+        self._presence_timer_to_away = want_away
+        _LOGGER.debug(
+            "Scheduling presence %s switch in %s seconds",
+            "away" if want_away else "restore",
+            timeout,
+        )
+        self._presence_timer_remove = async_call_later(
+            self.hass, timeout, self._async_presence_timer_fired
+        )
+
+    async def _async_presence_timer_fired(self, *args) -> None:
+        """Apply the debounced presence decision once the countdown elapses."""
+        self._presence_timer_remove = None
+        self._presence_timer_to_away = None
         await self._async_apply_presence()
         self.async_write_ha_state()
 
@@ -2193,6 +2229,16 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             old_preset_mode,
             self.features.is_range_mode,
         )
+
+        # If a non-away preset is selected while presence sensing is holding the
+        # away preset, the selection is an external override (user/automation).
+        # Drop the forced-away bookkeeping so presence won't later restore a
+        # stale preset; the next absence re-evaluates from this new preset.
+        # Presence's own away/restore calls don't hit this: the away call uses
+        # PRESET_AWAY, and the restore call clears the flag before calling here.
+        if preset_mode != PRESET_AWAY and self._presence_forced_away:
+            self._presence_forced_away = False
+            self._presence_saved_preset = None
 
         self.presets.set_preset_mode(preset_mode)
 

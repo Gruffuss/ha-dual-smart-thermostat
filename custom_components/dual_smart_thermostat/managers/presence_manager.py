@@ -7,6 +7,7 @@ per-entity debounce timeouts and an HVAC-mode scope) mirrors
 :class:`OpeningManager` so the two features behave consistently.
 """
 
+from datetime import timedelta
 import enum
 from itertools import chain
 import logging
@@ -16,14 +17,11 @@ from homeassistant.components.climate import HVACMode
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     STATE_HOME,
-    STATE_NOT_HOME,
-    STATE_OFF,
     STATE_ON,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import condition
 from homeassistant.helpers.typing import ConfigType
 
 from ..const import (
@@ -70,7 +68,6 @@ class PresenceManager:
         self.presence_entities = (
             self.conform_presence_entities(self.presence) if presence else []
         )
-        self._presence_curr_state = {k: None for k in self.presence_entities}
 
     @staticmethod
     def conform_presence_list(presence: list) -> list:
@@ -104,11 +101,6 @@ class PresenceManager:
 
         return True
 
-    def _has_timeout_mode(self, presence: TIMED_PRESENCE_SCHEMA, is_present: bool) -> bool:  # type: ignore
-        """If the presence sensor has a timeout mode for the given state."""
-        timeout_attr = ATTR_PRESENCE_TIMEOUT if is_present else ATTR_ABSENCE_TIMEOUT
-        return timeout_attr in presence
-
     def _is_present_state(self, presence: TIMED_PRESENCE_SCHEMA) -> bool:  # type: ignore
         """If the presence sensor currently reports someone present."""
         if not self._is_presence_available(presence):
@@ -132,8 +124,12 @@ class PresenceManager:
         * no configured sensor is currently available -> present (a sensor
           outage must never trigger the away preset)
 
-        Otherwise returns ``True`` only if at least one available sensor reports
-        someone present, applying the per-sensor debounce timeouts.
+        Otherwise returns ``True`` if *any* available sensor reports someone
+        present (the room is considered occupied while a single sensor sees
+        someone). This is the raw, instantaneous occupancy. The absence
+        debounce (waiting for the whole room to stay empty before switching to
+        away) is applied to this aggregate by the climate entity, using
+        :attr:`absence_timeout_seconds`, rather than per sensor.
         """
         _LOGGER.debug("is_presence_detected")
         if not self.presence_entities:
@@ -159,74 +155,41 @@ class PresenceManager:
             # No reliable information; never force an away switch on an outage.
             return True
 
-        return any(self._is_present(p) for p in available)
+        return any(self._is_present_state(p) for p in available)
 
-    def _is_present(self, presence: TIMED_PRESENCE_SCHEMA) -> bool:  # type: ignore
-        """If the presence sensor reports present, honoring debounce timeouts."""
-        presence_entity = presence[ATTR_ENTITY_ID]
+    def _aggregate_timeout_seconds(self, timeout_attr: str) -> float:
+        """Combine the per-sensor ``timeout_attr`` values into a single wait.
 
-        # the sensor is unavailable -> treat as present (safe default)
-        if not self._is_presence_available(presence):
-            _LOGGER.debug("Presence sensor %s is not available.", presence)
-            self._presence_curr_state[presence_entity] = True
-            return True
+        The debounce is applied to the *aggregate* occupancy rather than per
+        sensor, so the configured per-sensor values are combined into a single,
+        most-conservative (longest) wait. Returns ``0`` when none is configured.
 
-        is_present = self._is_present_state(presence)
-        # check timeout
-        if self._has_timeout_mode(presence, is_present):
-            _LOGGER.debug(
-                "Have timeout mode for presence: %s, is present: %s",
-                presence,
-                is_present,
-            )
+        Handles both the YAML form (``timedelta``) and the config/options flow
+        form (plain seconds as ``int``/``float``).
+        """
+        timeouts: List[float] = []
+        for presence in self.presence:
+            value = presence.get(timeout_attr)
+            if value is None:
+                continue
+            if isinstance(value, timedelta):
+                timeouts.append(value.total_seconds())
+            elif isinstance(value, (int, float)):
+                timeouts.append(float(value))
+        return max(timeouts) if timeouts else 0.0
 
-            result = is_present
-            if self._is_presence_timed_out(presence, is_present):
-                result = is_present
+    @property
+    def absence_timeout_seconds(self) -> float:
+        """Seconds the room must stay empty before switching to away.
 
-            # this is to avoid debounce when state changes multiple times
-            # inside the timeout interval or incorrect detection at startup
-            elif (
-                self._presence_curr_state[presence_entity] == is_present
-                or self._presence_curr_state[presence_entity] is None
-            ):
-                result = is_present
+        ``0`` means the away switch is immediate once the room is empty.
+        """
+        return self._aggregate_timeout_seconds(ATTR_ABSENCE_TIMEOUT)
 
-            else:
-                result = not is_present
+    @property
+    def presence_timeout_seconds(self) -> float:
+        """Seconds presence must persist before the prior preset is restored.
 
-            self._presence_curr_state[presence_entity] = result
-            return result
-
-        _LOGGER.debug(
-            "No timeout mode for presence %s, is present: %s.",
-            presence,
-            is_present,
-        )
-        self._presence_curr_state[presence_entity] = is_present
-        return is_present
-
-    def _is_presence_timed_out(self, presence: TIMED_PRESENCE_SCHEMA, check_present: True) -> bool:  # type: ignore
-        presence_entity = presence[ATTR_ENTITY_ID]
-        timeout_attr = ATTR_PRESENCE_TIMEOUT if check_present else ATTR_ABSENCE_TIMEOUT
-
-        _LOGGER.debug(
-            "Checking if presence %s is timed out, state: %s, timeout: %s, waiting state: %s",
-            presence,
-            self.hass.states.get(presence_entity),
-            presence[timeout_attr],
-            STATE_ON if check_present else STATE_OFF,
-        )
-        if condition.state(
-            self.hass,
-            presence_entity,
-            STATE_ON if check_present else STATE_OFF,
-            presence[timeout_attr],
-        ) or condition.state(
-            self.hass,
-            presence_entity,
-            STATE_HOME if check_present else STATE_NOT_HOME,
-            presence[timeout_attr],
-        ):
-            return True
-        return False
+        ``0`` means the restore is immediate as soon as any sensor is present.
+        """
+        return self._aggregate_timeout_seconds(ATTR_PRESENCE_TIMEOUT)
