@@ -42,8 +42,9 @@ def test_preset_schema_with_selected_presets_only():
     schema = get_presets_schema(user_input)
     schema_dict = schema.schema
 
-    # Should have only 2 basic temperature presets (away_temp and home_temp)
-    assert len(schema_dict) == 2
+    # Each selected preset contributes 3 fields: _temp, _fan_mode, _switches.
+    # Two presets selected -> 6 fields total.
+    assert len(schema_dict) == 6
 
     # Check only selected preset temperature fields are present
     assert "away_temp" in schema_dict
@@ -51,6 +52,14 @@ def test_preset_schema_with_selected_presets_only():
     assert "sleep_temp" not in schema_dict
     assert "eco_temp" not in schema_dict
     assert "comfort_temp" not in schema_dict
+
+    # Check the new per-preset fan_mode and switches fields are present
+    assert "away_fan_mode" in schema_dict
+    assert "home_fan_mode" in schema_dict
+    assert "away_switches" in schema_dict
+    assert "home_switches" in schema_dict
+    assert "sleep_fan_mode" not in schema_dict
+    assert "sleep_switches" not in schema_dict
 
 
 def test_preset_schema_with_selected_presets_and_features():
@@ -70,9 +79,9 @@ def test_preset_schema_with_selected_presets_and_features():
     schema = get_presets_schema(user_input)
     schema_dict = schema.schema
 
-    # Current implementation only generates basic temperature fields for
-    # selected presets. Expect two temperature fields for the selected presets.
-    assert len(schema_dict) == 2
+    # Each selected preset contributes 3 fields: _temp, _fan_mode, _switches.
+    # Two presets selected -> 6 fields total.
+    assert len(schema_dict) == 6
 
     assert "away_temp" in schema_dict
     assert "comfort_temp" in schema_dict
@@ -81,6 +90,14 @@ def test_preset_schema_with_selected_presets_and_features():
     assert "home_temp" not in schema_dict
     assert "sleep_temp" not in schema_dict
     assert "eco_temp" not in schema_dict
+
+    # Check the new per-preset fan_mode and switches fields are present
+    assert "away_fan_mode" in schema_dict
+    assert "comfort_fan_mode" in schema_dict
+    assert "away_switches" in schema_dict
+    assert "comfort_switches" in schema_dict
+    assert "home_fan_mode" not in schema_dict
+    assert "home_switches" not in schema_dict
 
 
 def test_preset_schema_backward_compatibility():
