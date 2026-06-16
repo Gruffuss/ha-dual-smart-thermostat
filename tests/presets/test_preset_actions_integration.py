@@ -94,3 +94,55 @@ async def test_climate_applies_and_restores_preset_actions(hass, monkeypatch):
     )
     await hass.async_block_till_done()
     assert len(restore_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_yaml_preset_schema_accepts_fan_mode_and_switches(hass):
+    """YAML PRESET_SCHEMA must accept per-preset fan_mode + switches keys.
+
+    Before the fix, PLATFORM_SCHEMA validation rejected ``fan_mode`` and
+    ``switches`` inside a preset dict, so the entity was never created.
+    After the fix both keys are optional in PRESET_SCHEMA, the entity
+    registers successfully, and the Sleep preset can be selected without error.
+    """
+    hass.config.units = METRIC_SYSTEM
+    assert await async_setup_component(
+        hass,
+        CLIMATE,
+        {
+            "climate": {
+                "platform": DOMAIN,
+                "name": "test",
+                "cold_tolerance": 2,
+                "hot_tolerance": 4,
+                "heater": common.ENT_HEATER,
+                "target_sensor": common.ENT_SENSOR,
+                "initial_hvac_mode": HVACMode.HEAT,
+                PRESET_SLEEP: {
+                    "temperature": 18,
+                    "fan_mode": "quiet",
+                    "switches": ["input_boolean.dummy_sleep"],
+                },
+            }
+        },
+    )
+    await hass.async_block_till_done()
+
+    hass.states.async_set(common.ENT_SENSOR, 20)
+    await hass.async_block_till_done()
+
+    # Primary assertion: entity was created => schema accepted fan_mode + switches.
+    state = hass.states.get(common.ENTITY)
+    assert (
+        state is not None
+    ), "Entity was not created; PRESET_SCHEMA rejected fan_mode or switches"
+
+    # Secondary: selecting the Sleep preset must not raise.
+    await hass.services.async_call(
+        "climate",
+        "set_preset_mode",
+        {"entity_id": common.ENTITY, "preset_mode": PRESET_SLEEP},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(common.ENTITY).attributes.get("preset_mode") == PRESET_SLEEP

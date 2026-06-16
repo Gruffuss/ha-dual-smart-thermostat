@@ -127,6 +127,7 @@ from .const import (
     CONF_PRECISION,
     CONF_PRESENCE,
     CONF_PRESENCE_SCOPE,
+    CONF_PRESET_SWITCHES,
     CONF_PRESETS,
     CONF_PRESETS_OLD,
     CONF_PWM_CYCLE_DURATION,
@@ -186,6 +187,8 @@ PRESET_SCHEMA = {
     vol.Optional(ATTR_TARGET_TEMP_HIGH): validate_template_or_number,
     vol.Optional(CONF_MAX_FLOOR_TEMP): vol.Coerce(float),
     vol.Optional(CONF_MIN_FLOOR_TEMP): vol.Coerce(float),
+    vol.Optional(CONF_FAN_MODE): cv.string,
+    vol.Optional(CONF_PRESET_SWITCHES): vol.All(cv.ensure_list, [cv.entity_id]),
 }
 
 SECONDARY_HEATING_SCHEMA = {
