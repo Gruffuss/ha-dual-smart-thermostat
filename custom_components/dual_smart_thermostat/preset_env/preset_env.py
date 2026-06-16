@@ -11,7 +11,7 @@ from homeassistant.const import ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.template import Template
 
-from ..const import CONF_MAX_FLOOR_TEMP, CONF_MIN_FLOOR_TEMP
+from ..const import CONF_MAX_FLOOR_TEMP, CONF_MIN_FLOOR_TEMP, CONF_PRESET_SWITCHES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,6 +78,10 @@ class PresetEnv(TempEnv, HumidityEnv):
         self._process_field("temperature", kwargs.get(ATTR_TEMPERATURE))
         self._process_field("target_temp_low", kwargs.get(ATTR_TARGET_TEMP_LOW))
         self._process_field("target_temp_high", kwargs.get(ATTR_TARGET_TEMP_HIGH))
+
+        # Action fields: applied to the wrapped AC when the preset activates.
+        self.fan_mode = kwargs.get("fan_mode") or None
+        self.switches = kwargs.get(CONF_PRESET_SWITCHES) or None
 
     def _process_field(self, field_name: str, value: Any) -> None:
         """Process temperature field to determine if static or template."""
@@ -200,6 +204,12 @@ class PresetEnv(TempEnv, HumidityEnv):
 
     def has_humidity(self) -> bool:
         return self.humidity is not None
+
+    def has_fan_mode(self) -> bool:
+        return self.fan_mode is not None
+
+    def has_switches(self) -> bool:
+        return bool(self.switches)
 
     def has_floor_temp_limits(self) -> bool:
         return self.min_floor_temp is not None or self.max_floor_temp is not None
