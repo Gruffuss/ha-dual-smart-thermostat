@@ -101,3 +101,63 @@ async def test_apply_noop_when_no_actions():
     await mgr.async_apply(PresetEnv(temperature=20))
     hass.services.async_call.assert_not_awaited()
     assert mgr.serialize_baseline() is None
+
+
+@pytest.mark.asyncio
+async def test_apply_skips_fan_mode_when_fan_modes_empty():
+    fan_device = MagicMock()
+    fan_device.fan_modes = []  # capability detection not ready
+    fan_device.current_fan_mode = None
+    fan_device.async_set_fan_mode = AsyncMock()
+
+    _, _, mgr = _make_manager(fan_device=fan_device, supports_fan_mode=True)
+    await mgr.async_apply(PresetEnv(temperature=18, fan_mode="quiet"))
+
+    fan_device.async_set_fan_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_apply_skips_fan_mode_when_unsupported_by_device():
+    fan_device = MagicMock()
+    fan_device.fan_modes = ["auto", "low", "quiet"]
+    fan_device.current_fan_mode = "low"
+    fan_device.async_set_fan_mode = AsyncMock()
+
+    # Device present but supports_fan_mode False -> must skip.
+    _, _, mgr = _make_manager(fan_device=fan_device, supports_fan_mode=False)
+    await mgr.async_apply(PresetEnv(temperature=18, fan_mode="quiet"))
+
+    fan_device.async_set_fan_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_apply_skips_unavailable_switch():
+    from homeassistant.const import STATE_UNAVAILABLE
+
+    hass, _, mgr = _make_manager(states={"switch.sleep": _state(STATE_UNAVAILABLE)})
+    await mgr.async_apply(PresetEnv(temperature=18, switches=["switch.sleep"]))
+
+    hass.services.async_call.assert_not_awaited()
+    # Unavailable switch is not captured into the baseline.
+    assert mgr.serialize_baseline() == {"fan_mode": None, "switches": {}}
+
+
+@pytest.mark.asyncio
+async def test_second_apply_does_not_overwrite_baseline():
+    hass, _, mgr = _make_manager(states={"switch.sleep": _state("off")})
+    await mgr.async_apply(PresetEnv(temperature=18, switches=["switch.sleep"]))
+    first = mgr.serialize_baseline()
+
+    # Simulate the switch now being on (preset applied it), then apply again.
+    hass.states.get = lambda eid: _state("on") if eid == "switch.sleep" else None
+    await mgr.async_apply(PresetEnv(temperature=18, switches=["switch.sleep"]))
+
+    # Baseline still reflects the ORIGINAL pre-preset state ("off").
+    assert (
+        mgr.serialize_baseline()
+        == first
+        == {
+            "fan_mode": None,
+            "switches": {"switch.sleep": "off"},
+        }
+    )

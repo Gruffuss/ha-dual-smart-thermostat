@@ -45,6 +45,10 @@ class PresetActionManager:
         await self._apply_switches(preset_env)
 
     def _capture_baseline(self, preset_env: PresetEnv) -> None:
+        # Captured only on the first apply (async_apply guards on
+        # self._baseline is None). The climate entity restores the baseline
+        # before applying a different preset, so consecutive presets never
+        # clobber the original pre-preset state recorded here.
         baseline: dict = {"fan_mode": None, "switches": {}}
 
         if preset_env.has_fan_mode():
@@ -74,7 +78,7 @@ class PresetActionManager:
         if fan_device is None:
             _LOGGER.warning("Preset requests fan mode but no fan device found")
             return
-        if fan_device.fan_modes and preset_env.fan_mode not in fan_device.fan_modes:
+        if not fan_device.fan_modes or preset_env.fan_mode not in fan_device.fan_modes:
             _LOGGER.warning(
                 "Preset fan mode %s not supported by device (supported: %s); "
                 "skipping",
