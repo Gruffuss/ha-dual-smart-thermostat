@@ -207,3 +207,26 @@ async def test_restore_baseline_roundtrip():
     hass.services.async_call.assert_awaited_once_with(
         "homeassistant", "turn_off", {"entity_id": "switch.sleep"}, blocking=True
     )
+
+
+@pytest.mark.asyncio
+async def test_restore_turns_switch_back_on_when_prior_was_on():
+    # A switch that was ON before the preset must be turned back ON on restore.
+    hass, _, mgr = _make_manager(states={"switch.health": _state("on")})
+    await mgr.async_apply(PresetEnv(temperature=18, switches=["switch.health"]))
+    hass.services.async_call.reset_mock()
+
+    await mgr.async_restore()
+
+    hass.services.async_call.assert_awaited_once_with(
+        "homeassistant", "turn_on", {"entity_id": "switch.health"}, blocking=True
+    )
+    assert mgr.serialize_baseline() is None
+
+
+@pytest.mark.asyncio
+async def test_restore_baseline_roundtrip_clears_baseline():
+    hass, _, mgr = _make_manager(states={"switch.sleep": _state("on")})
+    mgr.restore_baseline({"fan_mode": None, "switches": {"switch.sleep": "off"}})
+    await mgr.async_restore()
+    assert mgr.serialize_baseline() is None
