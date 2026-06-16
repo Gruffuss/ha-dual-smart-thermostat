@@ -81,6 +81,9 @@ async def test_climate_applies_and_restores_preset_actions(hass, monkeypatch):
     )
     await hass.async_block_till_done()
     assert len(apply_calls) == 1
+    # The env applied on enter must be the Sleep preset env (has a temperature),
+    # not the blank PRESET_NONE env.
+    assert apply_calls[0].has_temp()
 
     # Leave to None -> restore called once.
     await hass.services.async_call(

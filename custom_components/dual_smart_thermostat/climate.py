@@ -2230,8 +2230,14 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
     async def _async_apply_preset_actions(
         self, old_preset_mode: str, preset_mode: str
     ) -> None:
-        """Restore the previous preset's actions and apply the new one's."""
-        leaving = old_preset_mode != PRESET_NONE and old_preset_mode != preset_mode
+        """Restore the prior preset's fan/switch actions and apply the new one's.
+
+        Re-selecting the SAME preset (old == new) intentionally skips the
+        restore and simply re-asserts the preset's actions; the baseline
+        captured on first apply is preserved (PresetActionManager.async_apply
+        only captures when no baseline is held), so no prior state is lost.
+        """
+        leaving = old_preset_mode not in (PRESET_NONE, preset_mode)
         if leaving:
             await self._preset_actions.async_restore()
         if preset_mode != PRESET_NONE:
