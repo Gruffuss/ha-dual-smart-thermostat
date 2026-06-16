@@ -171,6 +171,7 @@ from .managers.feature_manager import FeatureManager
 from .managers.hvac_power_manager import HvacPowerManager
 from .managers.opening_manager import OpeningHvacModeScope, OpeningManager
 from .managers.presence_manager import PresenceHvacModeScope, PresenceManager
+from .managers.preset_action_manager import PresetActionManager
 from .managers.preset_manager import PresetManager
 from .managers.valve_maintenance_manager import ValveMaintenanceManager
 from .schemas import validate_template_or_number
@@ -512,6 +513,8 @@ async def _async_setup_config(
 
     preset_manager = PresetManager(hass, config, environment_manager, feature_manager)
 
+    preset_action_manager = PresetActionManager(hass, feature_manager)
+
     device_factory = HVACDeviceFactory(hass, config, feature_manager)
 
     hvac_device = device_factory.create_device(
@@ -534,6 +537,7 @@ async def _async_setup_config(
         unique_id,
         hvac_device,
         preset_manager,
+        preset_action_manager,
         environment_manager,
         opening_manager,
         feature_manager,
@@ -617,6 +621,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         unique_id,
         hvac_device: ControlableHVACDevice,
         preset_manager: PresetManager,
+        preset_action_manager: PresetActionManager,
         environment_manager: EnvironmentManager,
         opening_manager: OpeningManager,
         feature_manager: FeatureManager,
@@ -635,6 +640,9 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         # preset manager
         self.presets = preset_manager
+
+        # preset action manager (fan mode + switches)
+        self._preset_actions = preset_action_manager
 
         # temperature manager
         self.environment = environment_manager
@@ -2219,6 +2227,16 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         """If the toggleable device is currently active."""
         return self.hvac_device.is_active
 
+    async def _async_apply_preset_actions(
+        self, old_preset_mode: str, preset_mode: str
+    ) -> None:
+        """Restore the previous preset's actions and apply the new one's."""
+        leaving = old_preset_mode != PRESET_NONE and old_preset_mode != preset_mode
+        if leaving:
+            await self._preset_actions.async_restore()
+        if preset_mode != PRESET_NONE:
+            await self._preset_actions.async_apply(self.presets.preset_env)
+
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new preset mode."""
         old_preset_mode = self.presets.preset_mode
@@ -2258,6 +2276,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self.environment.set_humidity_from_preset(
                 self.presets.preset_mode, self.presets.preset_env, old_preset_mode
             )
+
+        await self._async_apply_preset_actions(old_preset_mode, preset_mode)
 
         # Update template listeners for new preset
         await self._setup_template_listeners()
@@ -2306,6 +2326,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         if not self.presets.has_presets:
             return
 
+        old_preset_mode = self.presets.preset_mode
         matching_preset = self.presets.find_matching_preset()
         if matching_preset:
             _LOGGER.info(
@@ -2313,6 +2334,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             )
             self.presets.set_preset_mode(matching_preset)
             self._attr_preset_mode = self.presets.preset_mode
+            await self._async_apply_preset_actions(old_preset_mode, matching_preset)
 
     async def async_turn_on(self) -> None:
         """Turn on the device."""
