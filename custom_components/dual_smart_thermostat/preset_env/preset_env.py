@@ -11,7 +11,12 @@ from homeassistant.const import ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.template import Template
 
-from ..const import CONF_MAX_FLOOR_TEMP, CONF_MIN_FLOOR_TEMP, CONF_PRESET_SWITCHES
+from ..const import (
+    CONF_FAN_MODE,
+    CONF_MAX_FLOOR_TEMP,
+    CONF_MIN_FLOOR_TEMP,
+    CONF_PRESET_SWITCHES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -80,7 +85,7 @@ class PresetEnv(TempEnv, HumidityEnv):
         self._process_field("target_temp_high", kwargs.get(ATTR_TARGET_TEMP_HIGH))
 
         # Action fields: applied to the wrapped AC when the preset activates.
-        self.fan_mode = kwargs.get("fan_mode") or None
+        self.fan_mode = kwargs.get(CONF_FAN_MODE) or None
         self.switches = kwargs.get(CONF_PRESET_SWITCHES) or None
 
     def _process_field(self, field_name: str, value: Any) -> None:

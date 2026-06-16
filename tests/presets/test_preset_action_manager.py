@@ -21,3 +21,7 @@ def test_preset_env_without_actions_defaults_none():
     assert env.switches is None
     assert env.has_fan_mode() is False
     assert env.has_switches() is False
+
+    # Empty switch list is falsy: has_switches() must be False, not None-only.
+    env_empty = PresetEnv(temperature=20, switches=[])
+    assert env_empty.has_switches() is False
