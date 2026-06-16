@@ -161,3 +161,49 @@ async def test_second_apply_does_not_overwrite_baseline():
             "switches": {"switch.sleep": "off"},
         }
     )
+
+
+@pytest.mark.asyncio
+async def test_restore_reverts_fan_mode_and_switches():
+    fan_device = MagicMock()
+    fan_device.fan_modes = ["auto", "low", "quiet"]
+    fan_device.current_fan_mode = "low"
+    fan_device.async_set_fan_mode = AsyncMock()
+
+    hass, _, mgr = _make_manager(
+        fan_device=fan_device,
+        supports_fan_mode=True,
+        states={"switch.sleep": _state("off")},
+    )
+    env = PresetEnv(temperature=18, fan_mode="quiet", switches=["switch.sleep"])
+
+    await mgr.async_apply(env)
+    fan_device.async_set_fan_mode.reset_mock()
+    hass.services.async_call.reset_mock()
+
+    await mgr.async_restore()
+
+    # Fan mode reverted to the captured "low".
+    fan_device.async_set_fan_mode.assert_awaited_once_with("low")
+    # Switch reverted to its prior "off" state via turn_off.
+    hass.services.async_call.assert_awaited_once_with(
+        "homeassistant", "turn_off", {"entity_id": "switch.sleep"}, blocking=True
+    )
+    assert mgr.serialize_baseline() is None
+
+
+@pytest.mark.asyncio
+async def test_restore_without_baseline_is_noop():
+    hass, _, mgr = _make_manager()
+    await mgr.async_restore()
+    hass.services.async_call.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_restore_baseline_roundtrip():
+    hass, _, mgr = _make_manager(states={"switch.sleep": _state("on")})
+    mgr.restore_baseline({"fan_mode": None, "switches": {"switch.sleep": "off"}})
+    await mgr.async_restore()
+    hass.services.async_call.assert_awaited_once_with(
+        "homeassistant", "turn_off", {"entity_id": "switch.sleep"}, blocking=True
+    )

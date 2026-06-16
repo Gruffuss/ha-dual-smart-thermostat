@@ -103,6 +103,35 @@ class PresetActionManager:
                 blocking=True,
             )
 
+    # ----- restore -------------------------------------------------------------
+
+    async def async_restore(self) -> None:
+        """Restore fan mode + switch states captured before the preset."""
+        if self._baseline is None:
+            return
+
+        fan_mode = self._baseline.get("fan_mode")
+        if (
+            fan_mode is not None
+            and self._features.supports_fan_mode
+            and self._features.fan_device is not None
+        ):
+            await self._features.fan_device.async_set_fan_mode(fan_mode)
+
+        for entity_id, prior in self._baseline.get("switches", {}).items():
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                continue
+            service = "turn_on" if prior == "on" else "turn_off"
+            await self.hass.services.async_call(
+                "homeassistant",
+                service,
+                {ATTR_ENTITY_ID: entity_id},
+                blocking=True,
+            )
+
+        self._baseline = None
+
     # ----- baseline (de)serialization -----------------------------------------
 
     def serialize_baseline(self) -> dict | None:
