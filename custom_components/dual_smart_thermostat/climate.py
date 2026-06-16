@@ -77,6 +77,7 @@ from .const import (
     ATTR_HVAC_POWER_PERCENT,
     ATTR_LAST_HVAC_MODE,
     ATTR_OPENING_TIMEOUT,
+    ATTR_PRESET_ACTION_BASELINE,
     ATTR_PREV_HUMIDITY,
     ATTR_PREV_TARGET,
     ATTR_PREV_TARGET_HIGH,
@@ -1089,6 +1090,12 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             await self.presets.apply_old_state(old_state)
             self._attr_preset_mode = self.presets.preset_mode
 
+            # Re-inject the persisted preset-action baseline so a later preset
+            # exit reverts fan mode / switches correctly after a restart.
+            self._preset_actions.restore_baseline(
+                old_state.attributes.get(ATTR_PRESET_ACTION_BASELINE)
+            )
+
             _LOGGER.debug("restoring hvac_mode: %s", hvac_mode)
             await self.async_set_hvac_mode(hvac_mode, is_restore=True)
 
@@ -1413,6 +1420,13 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             )
             attributes[ATTR_HVAC_POWER_LEVEL] = self.power_manager.hvac_power_level
             attributes[ATTR_HVAC_POWER_PERCENT] = self.power_manager.hvac_power_percent
+
+        # Persist the pre-preset action baseline so fan mode / switch state can
+        # be reverted even after a Home Assistant restart while a preset with
+        # actions is active.
+        action_baseline = self._preset_actions.serialize_baseline()
+        if action_baseline is not None:
+            attributes[ATTR_PRESET_ACTION_BASELINE] = action_baseline
 
         _LOGGER.debug("Extra state attributes: %s", attributes)
 

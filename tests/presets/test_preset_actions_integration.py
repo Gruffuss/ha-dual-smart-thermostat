@@ -146,3 +146,71 @@ async def test_yaml_preset_schema_accepts_fan_mode_and_switches(hass):
     )
     await hass.async_block_till_done()
     assert hass.states.get(common.ENTITY).attributes.get("preset_mode") == PRESET_SLEEP
+
+
+@pytest.mark.asyncio
+async def test_preset_action_baseline_persisted_in_state_attributes(hass):
+    """The pre-preset baseline is exposed in extra_state_attributes.
+
+    When a preset with switch actions is entered, the climate entity must
+    persist the prior switch state in the ``preset_action_baseline`` extra
+    state attribute so the baseline survives a Home Assistant restart and
+    a later exit from the preset can still revert the switch correctly.
+    """
+    from custom_components.dual_smart_thermostat.const import (
+        ATTR_PRESET_ACTION_BASELINE,
+    )
+
+    # Create the switch in the "off" state before the entity is set up so the
+    # baseline captures the real prior state.
+    hass.states.async_set("input_boolean.dummy_sleep", "off")
+    await hass.async_block_till_done()
+
+    hass.config.units = METRIC_SYSTEM
+    # The homeassistant domain must be set up so its turn_on/turn_off services
+    # are registered — they are called when a preset's switch list is applied.
+    assert await async_setup_component(hass, "homeassistant", {})
+    await hass.async_block_till_done()
+
+    assert await async_setup_component(
+        hass,
+        CLIMATE,
+        {
+            "climate": {
+                "platform": DOMAIN,
+                "name": "test",
+                "cold_tolerance": 2,
+                "hot_tolerance": 4,
+                "heater": common.ENT_HEATER,
+                "target_sensor": common.ENT_SENSOR,
+                "initial_hvac_mode": HVACMode.HEAT,
+                PRESET_SLEEP: {
+                    "temperature": 18,
+                    "switches": ["input_boolean.dummy_sleep"],
+                },
+            }
+        },
+    )
+    await hass.async_block_till_done()
+
+    hass.states.async_set(common.ENT_SENSOR, 20)
+    await hass.async_block_till_done()
+
+    # Select the Sleep preset — this should capture the switch's current "off"
+    # state into the baseline and expose it in extra_state_attributes.
+    await hass.services.async_call(
+        "climate",
+        "set_preset_mode",
+        {"entity_id": common.ENTITY, "preset_mode": PRESET_SLEEP},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    attrs = hass.states.get(common.ENTITY).attributes
+    assert (
+        ATTR_PRESET_ACTION_BASELINE in attrs
+    ), f"'preset_action_baseline' key missing from state attributes: {list(attrs)}"
+    baseline = attrs[ATTR_PRESET_ACTION_BASELINE]
+    assert (
+        baseline["switches"]["input_boolean.dummy_sleep"] == "off"
+    ), f"Expected switch baseline 'off', got: {baseline}"

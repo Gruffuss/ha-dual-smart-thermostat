@@ -230,3 +230,31 @@ async def test_restore_baseline_roundtrip_clears_baseline():
     mgr.restore_baseline({"fan_mode": None, "switches": {"switch.sleep": "off"}})
     await mgr.async_restore()
     assert mgr.serialize_baseline() is None
+
+
+@pytest.mark.asyncio
+async def test_serialize_then_restore_baseline_survives_roundtrip():
+    fan_device = MagicMock()
+    fan_device.fan_modes = ["auto", "low", "quiet"]
+    fan_device.current_fan_mode = "low"
+    fan_device.async_set_fan_mode = AsyncMock()
+
+    _, _, mgr = _make_manager(
+        fan_device=fan_device,
+        supports_fan_mode=True,
+        states={"switch.sleep": _state("off")},
+    )
+    await mgr.async_apply(
+        PresetEnv(temperature=18, fan_mode="quiet", switches=["switch.sleep"])
+    )
+
+    snapshot = mgr.serialize_baseline()
+
+    # Simulate restart: fresh manager, re-inject snapshot.
+    _, _, mgr2 = _make_manager(
+        fan_device=fan_device,
+        supports_fan_mode=True,
+        states={"switch.sleep": _state("on")},
+    )
+    mgr2.restore_baseline(snapshot)
+    assert mgr2.serialize_baseline() == snapshot
