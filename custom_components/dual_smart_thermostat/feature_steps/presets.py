@@ -153,7 +153,13 @@ class PresetsSteps:
         )
         from homeassistant.const import ATTR_TEMPERATURE
 
-        from ..const import CONF_MAX_FLOOR_TEMP, CONF_MIN_FLOOR_TEMP, CONF_PRESETS
+        from ..const import (
+            ATTR_FAN_MODE,
+            CONF_MAX_FLOOR_TEMP,
+            CONF_MIN_FLOOR_TEMP,
+            CONF_PRESET_SWITCHES,
+            CONF_PRESETS,
+        )
 
         flattened = dict(config)  # Start with a copy
 
@@ -165,6 +171,8 @@ class PresetsSteps:
             CONF_MIN_FLOOR_TEMP: "_min_floor_temp",
             CONF_MAX_FLOOR_TEMP: "_max_floor_temp",
             ATTR_HUMIDITY: "_humidity",
+            ATTR_FAN_MODE: "_fan_mode",
+            CONF_PRESET_SWITCHES: "_switches",
         }
 
         # Check each possible preset key
@@ -199,7 +207,12 @@ class PresetsSteps:
         )
         from homeassistant.const import ATTR_TEMPERATURE
 
-        from ..const import CONF_MAX_FLOOR_TEMP, CONF_MIN_FLOOR_TEMP
+        from ..const import (
+            ATTR_FAN_MODE,
+            CONF_MAX_FLOOR_TEMP,
+            CONF_MIN_FLOOR_TEMP,
+            CONF_PRESET_SWITCHES,
+        )
 
         transformed = {}
         preset_data = {}
@@ -212,6 +225,8 @@ class PresetsSteps:
             "_min_floor_temp": CONF_MIN_FLOOR_TEMP,
             "_max_floor_temp": CONF_MAX_FLOOR_TEMP,
             "_humidity": ATTR_HUMIDITY,
+            "_fan_mode": ATTR_FAN_MODE,
+            "_switches": CONF_PRESET_SWITCHES,
         }
 
         for key, value in user_input.items():
@@ -219,12 +234,16 @@ class PresetsSteps:
             matched = False
             for suffix, attr_name in field_mappings.items():
                 if key.endswith(suffix):
+                    matched = True
+                    # Drop empty values (blank fan mode, empty switch list) so
+                    # they are not persisted as meaningless preset config.
+                    if value in (None, "", []):
+                        break
                     # Extract preset key by removing the suffix
                     preset_key = key[: -len(suffix)]
                     if preset_key not in preset_data:
                         preset_data[preset_key] = {}
                     preset_data[preset_key][attr_name] = value
-                    matched = True
                     break
 
             if not matched:
