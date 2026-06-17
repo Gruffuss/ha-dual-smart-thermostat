@@ -1282,6 +1282,44 @@ def get_preset_selection_schema(defaults: list[str] | None = None):
     )
 
 
+def _available_preset_fan_modes(user_input: dict[str, Any]) -> list[str]:
+    """Best-effort list of fan modes the configured AC/fan entity supports.
+
+    Reads the live attributes of the configured cooler/heater (a wrapped
+    ``climate`` entity exposes ``fan_modes``) or fan entity (``preset_modes``,
+    or generic speed buckets for percentage-only fans) from the hass states
+    snapshot embedded in the schema context by ``build_schema_context_from_flow``.
+
+    Returns an empty list when the modes cannot be determined (e.g. a
+    switch-based cooler, or the entity is unavailable at config time), in which
+    case the caller falls back to a free-text field.
+    """
+    states = (user_input.get("hass") or {}).get("states") or {}
+
+    # Wrapped AC / climate cooler (or AC-mode heater) exposes climate fan_modes.
+    for conf_key in (CONF_COOLER, CONF_HEATER):
+        entity_id = user_input.get(conf_key)
+        state = states.get(entity_id) if entity_id else None
+        if state is not None:
+            modes = (getattr(state, "attributes", None) or {}).get("fan_modes")
+            if modes:
+                return [str(m) for m in modes]
+
+    # Separate fan entity: native preset modes, else generic speed buckets
+    # (mirrors FanDevice capability detection).
+    fan_entity = user_input.get(CONF_FAN)
+    state = states.get(fan_entity) if fan_entity else None
+    if state is not None:
+        attrs = getattr(state, "attributes", None) or {}
+        modes = attrs.get("preset_modes")
+        if modes:
+            return [str(m) for m in modes]
+        if attrs.get("percentage") is not None:
+            return ["auto", "low", "medium", "high"]
+
+    return []
+
+
 def get_presets_schema(user_input: dict[str, Any]) -> vol.Schema:
     """Get presets configuration schema based on selected presets.
 
@@ -1402,19 +1440,42 @@ def get_presets_schema(user_input: dict[str, Any]) -> vol.Schema:
             )
 
         # Optional fan mode applied to the wrapped AC while the preset is active.
-        # Free text so any device-specific mode (e.g. "quiet") is accepted;
-        # validity is checked against the live device when the preset applies.
+        # Prefer a dropdown of the AC/fan entity's real modes; fall back to a
+        # free-text field only when those modes cannot be determined.
         existing_fan_mode = user_input.get(f"{preset_key}_fan_mode", "")
         if not isinstance(existing_fan_mode, str):
             existing_fan_mode = str(existing_fan_mode)
-        schema_dict[
-            vol.Optional(f"{preset_key}_fan_mode", default=existing_fan_mode)
-        ] = selector.TextSelector(
-            selector.TextSelectorConfig(
-                multiline=False,
-                type=selector.TextSelectorType.TEXT,
+        available_fan_modes = _available_preset_fan_modes(user_input)
+        if available_fan_modes:
+            fan_options = [selector.SelectOptionDict(value="", label="(none)")]
+            fan_options += [
+                selector.SelectOptionDict(value=m, label=m) for m in available_fan_modes
+            ]
+            # Keep a previously-saved value selectable even if the device's
+            # advertised modes have since changed.
+            if existing_fan_mode and existing_fan_mode not in available_fan_modes:
+                fan_options.append(
+                    selector.SelectOptionDict(
+                        value=existing_fan_mode, label=existing_fan_mode
+                    )
+                )
+            schema_dict[
+                vol.Optional(f"{preset_key}_fan_mode", default=existing_fan_mode)
+            ] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=fan_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
             )
-        )
+        else:
+            schema_dict[
+                vol.Optional(f"{preset_key}_fan_mode", default=existing_fan_mode)
+            ] = selector.TextSelector(
+                selector.TextSelectorConfig(
+                    multiline=False,
+                    type=selector.TextSelectorType.TEXT,
+                )
+            )
 
         # Optional switches/input_booleans turned on while the preset is active.
         existing_switches = user_input.get(f"{preset_key}_switches", [])

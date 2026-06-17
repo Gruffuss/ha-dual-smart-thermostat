@@ -1,9 +1,11 @@
 """Test preset form organization improvements."""
 
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers import selector
 import pytest
 
 from custom_components.dual_smart_thermostat.const import (
+    CONF_COOLER,
     CONF_FAN,
     CONF_FAN_MODE,
     CONF_FLOOR_SENSOR,
@@ -215,6 +217,91 @@ def test_preset_organization_by_preset():
     schema = get_presets_schema(user_input)
     schema_keys = list(schema.schema.keys())
     assert len(schema_keys) == 0
+
+
+class _FakeState:
+    """Minimal stand-in for a HA State object in schema-context snapshots."""
+
+    def __init__(self, attributes):
+        self.attributes = attributes
+
+
+def _find_field(schema, name):
+    """Return the selector mapped to a field name in a vol.Schema."""
+    for key, value in schema.schema.items():
+        if str(key) == name:
+            return value
+    raise AssertionError(f"{name} not found in schema")
+
+
+def test_preset_fan_mode_renders_select_from_real_modes():
+    """The fan_mode field is a dropdown of the wrapped AC's actual fan_modes."""
+    user_input = {
+        "presets": ["sleep"],
+        CONF_COOLER: "climate.office_ac",
+        "hass": {
+            "states": {
+                "climate.office_ac": _FakeState({"fan_modes": ["auto", "low", "quiet"]})
+            }
+        },
+    }
+
+    schema = get_presets_schema(user_input)
+    field = _find_field(schema, "sleep_fan_mode")
+
+    assert isinstance(field, selector.SelectSelector)
+    option_values = [o["value"] for o in field.config["options"]]
+    # Real device modes are offered, plus an empty "(none)" choice to clear it.
+    assert "quiet" in option_values
+    assert "low" in option_values
+    assert "auto" in option_values
+    assert "" in option_values
+
+
+def test_preset_fan_mode_keeps_saved_value_not_in_current_modes():
+    """A previously-saved fan mode stays selectable even if no longer advertised."""
+    user_input = {
+        "presets": ["sleep"],
+        CONF_COOLER: "climate.office_ac",
+        "sleep_fan_mode": "turbo",  # saved value not in current modes
+        "hass": {
+            "states": {"climate.office_ac": _FakeState({"fan_modes": ["auto", "low"]})}
+        },
+    }
+
+    schema = get_presets_schema(user_input)
+    field = _find_field(schema, "sleep_fan_mode")
+
+    assert isinstance(field, selector.SelectSelector)
+    assert "turbo" in [o["value"] for o in field.config["options"]]
+
+
+def test_preset_fan_mode_falls_back_to_text_without_known_modes():
+    """Without a fan-capable entity in context, fan_mode stays a text field."""
+    schema = get_presets_schema({"presets": ["sleep"]})
+    field = _find_field(schema, "sleep_fan_mode")
+    assert isinstance(field, selector.TextSelector)
+
+
+def test_preset_fan_mode_select_from_fan_entity_preset_modes():
+    """A separate fan entity's preset_modes drive the dropdown too."""
+    user_input = {
+        "presets": ["sleep"],
+        CONF_FAN: "fan.bedroom",
+        "hass": {
+            "states": {
+                "fan.bedroom": _FakeState({"preset_modes": ["eco", "sleep", "turbo"]})
+            }
+        },
+    }
+
+    schema = get_presets_schema(user_input)
+    field = _find_field(schema, "sleep_fan_mode")
+
+    assert isinstance(field, selector.SelectSelector)
+    option_values = [o["value"] for o in field.config["options"]]
+    assert "eco" in option_values
+    assert "turbo" in option_values
 
 
 if __name__ == "__main__":
