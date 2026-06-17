@@ -737,14 +737,16 @@ Currently supported presets are:
 
 To set presets you need to add entries for them in the configuration file like this:
 
-You have 6 options here:
+You have 8 options here:
 
 1. Set the `temperature` for heat, cool or fan-only mode
 2. Set the `target_temp_low` and `target_temp_high` for heat_cool mode. If `temperature` is not set but `target_temp_low` and `target_temp_high` are set, the `temperature` will be picked based on hvac mode. For heat mode it will be `target_temp_low` and for cool, fan_only mode it will be `target_temp_high`
 3. Set the `humidity` for dry mode
 4. Set `min_floor_temp` for floor heating temperature control
 5. Set `max_floor_temp` for floor heating temperature control
-6. Set all above
+6. Set the `fan_mode` to apply a fan speed on a wrapped AC climate entity while the preset is active
+7. Set `switches` to turn on a list of `switch`/`input_boolean` entities while the preset is active
+8. Set all above
 
 ### Presets Configuration
 
@@ -756,7 +758,19 @@ preset_name:
   target_temp_high: 14
   min_floor_temp: 5
   max_floor_temp: 28
+  fan_mode: quiet # <-- only when a climate entity is wrapped as the cooler
+  switches: # <-- entities turned on while this preset is active
+    - switch.ac_sleep
 ```
+
+#### Preset actions: fan mode and switches
+
+When the cooler is a wrapped `climate` entity (see [Climate Entity as Cooler](#climate-entity-as-cooler)), a preset can also drive the AC beyond temperature:
+
+- `fan_mode` is applied to the wrapped AC's fan speed when the preset is selected (for example `sleep` → `quiet`). The value must be one of the AC's own `fan_modes`; if the entity has no fan speed control the setting is ignored.
+- `switches` is a list of `switch` or `input_boolean` entities that are turned **on** while the preset is active. This is how you trigger an AC's native functions that are exposed to Home Assistant as separate entities (for example a "sleep" switch that sits alongside the AC's `climate` entity).
+
+When you leave the preset (switch to `none` or another preset) the previous fan mode and the prior on/off state of each switch are **restored**. The pre-preset state is persisted, so the restore still works correctly after a Home Assistant restart while a preset is active. Both fields are optional and fully backward compatible — presets without them behave exactly as before.
 
 ## Auto Mode
 
