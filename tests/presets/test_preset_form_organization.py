@@ -304,5 +304,53 @@ def test_preset_fan_mode_select_from_fan_entity_preset_modes():
     assert "turbo" in option_values
 
 
+@pytest.mark.asyncio
+async def test_fan_mode_select_rendered_via_real_flow_context(hass):
+    """Regression: the live flow path must yield a fan-mode dropdown.
+
+    Drives the real presets step with a real HomeAssistant StateMachine.
+    Guards against the bug where build_schema_context_from_flow read the
+    non-existent ``hass.states.values()`` (the real StateMachine exposes
+    ``async_all()``), so the hass snapshot was never populated in production
+    and the fan-mode field silently fell back to a text input.
+    """
+    from unittest.mock import MagicMock
+
+    from custom_components.dual_smart_thermostat.feature_steps.presets import (
+        PresetsSteps,
+    )
+
+    hass.states.async_set(
+        "climate.office_ac",
+        "cool",
+        {"fan_modes": ["auto", "low", "quiet"], "supported_features": 8},
+    )
+    await hass.async_block_till_done()
+
+    flow = MagicMock()
+    flow.hass = hass
+    captured = {}
+
+    def _show_form(*, step_id, data_schema, **kw):
+        captured["schema"] = data_schema
+        return {"type": "form", "step_id": step_id}
+
+    flow.async_show_form = _show_form
+
+    await PresetsSteps().async_step_config(
+        flow,
+        None,
+        {
+            "presets": ["sleep"],
+            CONF_COOLER: "climate.office_ac",
+            "sleep": {"temperature": 18},
+        },
+    )
+
+    field = _find_field(captured["schema"], "sleep_fan_mode")
+    assert isinstance(field, selector.SelectSelector)
+    assert "quiet" in [o["value"] for o in field.config["options"]]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
