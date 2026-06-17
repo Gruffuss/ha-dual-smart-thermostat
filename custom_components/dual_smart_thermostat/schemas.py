@@ -1401,4 +1401,32 @@ def get_presets_schema(user_input: dict[str, Any]) -> vol.Schema:
                 )
             )
 
+        # Optional fan mode applied to the wrapped AC while the preset is active.
+        # Free text so any device-specific mode (e.g. "quiet") is accepted;
+        # validity is checked against the live device when the preset applies.
+        existing_fan_mode = user_input.get(f"{preset_key}_fan_mode", "")
+        if not isinstance(existing_fan_mode, str):
+            existing_fan_mode = str(existing_fan_mode)
+        schema_dict[
+            vol.Optional(f"{preset_key}_fan_mode", default=existing_fan_mode)
+        ] = selector.TextSelector(
+            selector.TextSelectorConfig(
+                multiline=False,
+                type=selector.TextSelectorType.TEXT,
+            )
+        )
+
+        # Optional switches/input_booleans turned on while the preset is active.
+        existing_switches = user_input.get(f"{preset_key}_switches", [])
+        if not isinstance(existing_switches, list):
+            existing_switches = []
+        schema_dict[
+            vol.Optional(f"{preset_key}_switches", default=existing_switches)
+        ] = selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                domain=["switch", "input_boolean"],
+                multiple=True,
+            )
+        )
+
     return vol.Schema(schema_dict)

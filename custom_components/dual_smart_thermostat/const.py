@@ -177,6 +177,11 @@ ATTR_ABSENCE_TIMEOUT = "absence_timeout"
 
 PRESET_ANTI_FREEZE = "Anti Freeze"
 
+# Per-preset action fields (stored inside each preset's nested config dict).
+CONF_PRESET_SWITCHES = "switches"
+# extra_state_attributes key holding the pre-preset baseline for restore.
+ATTR_PRESET_ACTION_BASELINE = "preset_action_baseline"
+
 CONF_PRESETS = {
     p: f"{p.replace(' ', '_').lower()}"
     for p in (

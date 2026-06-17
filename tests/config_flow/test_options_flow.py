@@ -1337,3 +1337,41 @@ async def test_options_flow_persists_use_apparent_temp(mock_hass):
 
     # CONF_USE_APPARENT_TEMP must be present and True in collected_config
     assert flow.collected_config.get(CONF_USE_APPARENT_TEMP) is True
+
+
+@pytest.mark.asyncio
+async def test_options_flow_persists_preset_fan_mode_and_switches(hass):
+    """Sleep preset fan_mode + switches persist through the presets step.
+
+    Regression coverage for the preset-driven fan mode / feature switches
+    feature: the options flow must transform `{preset}_fan_mode` and
+    `{preset}_switches` form fields into the nested preset config dict, and
+    flatten them back for display.
+    """
+    from custom_components.dual_smart_thermostat.feature_steps.presets import (
+        PresetsSteps,
+    )
+
+    steps = PresetsSteps()
+    transformed = steps._transform_preset_fields_to_new_format(
+        {
+            "sleep_temp": 18,
+            "sleep_fan_mode": "quiet",
+            "sleep_switches": ["switch.office_ac_sleep_2"],
+        }
+    )
+
+    assert transformed["sleep"]["fan_mode"] == "quiet"
+    assert transformed["sleep"]["switches"] == ["switch.office_ac_sleep_2"]
+
+    # Round-trip back to flat form fields re-flattens for display.
+    flattened = steps._flatten_presets_for_form({"sleep": transformed["sleep"]})
+    assert flattened["sleep_fan_mode"] == "quiet"
+    assert flattened["sleep_switches"] == ["switch.office_ac_sleep_2"]
+
+    # Empty fan mode / switch list must be dropped, not stored.
+    transformed_empty = steps._transform_preset_fields_to_new_format(
+        {"comfort_temp": 22, "comfort_fan_mode": "", "comfort_switches": []}
+    )
+    assert "fan_mode" not in transformed_empty.get("comfort", {})
+    assert "switches" not in transformed_empty.get("comfort", {})

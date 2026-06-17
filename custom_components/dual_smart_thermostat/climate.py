@@ -77,6 +77,7 @@ from .const import (
     ATTR_HVAC_POWER_PERCENT,
     ATTR_LAST_HVAC_MODE,
     ATTR_OPENING_TIMEOUT,
+    ATTR_PRESET_ACTION_BASELINE,
     ATTR_PREV_HUMIDITY,
     ATTR_PREV_TARGET,
     ATTR_PREV_TARGET_HIGH,
@@ -127,6 +128,7 @@ from .const import (
     CONF_PRECISION,
     CONF_PRESENCE,
     CONF_PRESENCE_SCOPE,
+    CONF_PRESET_SWITCHES,
     CONF_PRESETS,
     CONF_PRESETS_OLD,
     CONF_PWM_CYCLE_DURATION,
@@ -171,6 +173,7 @@ from .managers.feature_manager import FeatureManager
 from .managers.hvac_power_manager import HvacPowerManager
 from .managers.opening_manager import OpeningHvacModeScope, OpeningManager
 from .managers.presence_manager import PresenceHvacModeScope, PresenceManager
+from .managers.preset_action_manager import PresetActionManager
 from .managers.preset_manager import PresetManager
 from .managers.valve_maintenance_manager import ValveMaintenanceManager
 from .schemas import validate_template_or_number
@@ -185,6 +188,8 @@ PRESET_SCHEMA = {
     vol.Optional(ATTR_TARGET_TEMP_HIGH): validate_template_or_number,
     vol.Optional(CONF_MAX_FLOOR_TEMP): vol.Coerce(float),
     vol.Optional(CONF_MIN_FLOOR_TEMP): vol.Coerce(float),
+    vol.Optional(CONF_FAN_MODE): cv.string,
+    vol.Optional(CONF_PRESET_SWITCHES): vol.All(cv.ensure_list, [cv.entity_id]),
 }
 
 SECONDARY_HEATING_SCHEMA = {
@@ -512,6 +517,8 @@ async def _async_setup_config(
 
     preset_manager = PresetManager(hass, config, environment_manager, feature_manager)
 
+    preset_action_manager = PresetActionManager(hass, feature_manager)
+
     device_factory = HVACDeviceFactory(hass, config, feature_manager)
 
     hvac_device = device_factory.create_device(
@@ -534,6 +541,7 @@ async def _async_setup_config(
         unique_id,
         hvac_device,
         preset_manager,
+        preset_action_manager,
         environment_manager,
         opening_manager,
         feature_manager,
@@ -617,6 +625,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         unique_id,
         hvac_device: ControlableHVACDevice,
         preset_manager: PresetManager,
+        preset_action_manager: PresetActionManager,
         environment_manager: EnvironmentManager,
         opening_manager: OpeningManager,
         feature_manager: FeatureManager,
@@ -635,6 +644,9 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         # preset manager
         self.presets = preset_manager
+
+        # preset action manager (fan mode + switches)
+        self._preset_actions = preset_action_manager
 
         # temperature manager
         self.environment = environment_manager
@@ -1078,6 +1090,12 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             await self.presets.apply_old_state(old_state)
             self._attr_preset_mode = self.presets.preset_mode
 
+            # Re-inject the persisted preset-action baseline so a later preset
+            # exit reverts fan mode / switches correctly after a restart.
+            self._preset_actions.restore_baseline(
+                old_state.attributes.get(ATTR_PRESET_ACTION_BASELINE)
+            )
+
             _LOGGER.debug("restoring hvac_mode: %s", hvac_mode)
             await self.async_set_hvac_mode(hvac_mode, is_restore=True)
 
@@ -1402,6 +1420,13 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             )
             attributes[ATTR_HVAC_POWER_LEVEL] = self.power_manager.hvac_power_level
             attributes[ATTR_HVAC_POWER_PERCENT] = self.power_manager.hvac_power_percent
+
+        # Persist the pre-preset action baseline so fan mode / switch state can
+        # be reverted even after a Home Assistant restart while a preset with
+        # actions is active.
+        action_baseline = self._preset_actions.serialize_baseline()
+        if action_baseline is not None:
+            attributes[ATTR_PRESET_ACTION_BASELINE] = action_baseline
 
         _LOGGER.debug("Extra state attributes: %s", attributes)
 
@@ -2219,6 +2244,22 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         """If the toggleable device is currently active."""
         return self.hvac_device.is_active
 
+    async def _async_apply_preset_actions(
+        self, old_preset_mode: str, preset_mode: str
+    ) -> None:
+        """Restore the prior preset's fan/switch actions and apply the new one's.
+
+        Re-selecting the SAME preset (old == new) intentionally skips the
+        restore and simply re-asserts the preset's actions; the baseline
+        captured on first apply is preserved (PresetActionManager.async_apply
+        only captures when no baseline is held), so no prior state is lost.
+        """
+        leaving = old_preset_mode not in (PRESET_NONE, preset_mode)
+        if leaving:
+            await self._preset_actions.async_restore()
+        if preset_mode != PRESET_NONE:
+            await self._preset_actions.async_apply(self.presets.preset_env)
+
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new preset mode."""
         old_preset_mode = self.presets.preset_mode
@@ -2258,6 +2299,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self.environment.set_humidity_from_preset(
                 self.presets.preset_mode, self.presets.preset_env, old_preset_mode
             )
+
+        await self._async_apply_preset_actions(old_preset_mode, preset_mode)
 
         # Update template listeners for new preset
         await self._setup_template_listeners()
@@ -2306,6 +2349,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         if not self.presets.has_presets:
             return
 
+        old_preset_mode = self.presets.preset_mode
         matching_preset = self.presets.find_matching_preset()
         if matching_preset:
             _LOGGER.info(
@@ -2313,6 +2357,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             )
             self.presets.set_preset_mode(matching_preset)
             self._attr_preset_mode = self.presets.preset_mode
+            await self._async_apply_preset_actions(old_preset_mode, matching_preset)
 
     async def async_turn_on(self) -> None:
         """Turn on the device."""
