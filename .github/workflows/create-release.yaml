@@ -2,8 +2,12 @@ name: Create Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - master
+    paths:
+      - ".github/release-notes/*.md"
+      - ".github/workflows/create-release.yaml"
+      - "custom_components/dual_smart_thermostat/manifest.json"
   workflow_dispatch:
     inputs:
       tag:
@@ -35,10 +39,11 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_TITLE: ${{ inputs.title }}
-          REF_NAME: ${{ github.ref_name }}
         run: |
           if [ "$EVENT_NAME" = "push" ]; then
-            tag="$REF_NAME"
+            # Releases are cut from the version in the manifest; a push where
+            # the manifest version already has a release is a no-op.
+            tag=$(jq -r .version custom_components/dual_smart_thermostat/manifest.json)
           else
             tag="$INPUT_TAG"
           fi
@@ -52,28 +57,10 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "title=$title" >> "$GITHUB_OUTPUT"
 
-      - name: Validate notes file exists
-        env:
-          TAG: ${{ steps.meta.outputs.tag }}
-        run: |
-          if [ ! -f ".github/release-notes/$TAG.md" ]; then
-            echo "::error::Missing release notes file .github/release-notes/$TAG.md"
-            exit 1
-          fi
-
-      - name: Verify manifest version matches tag
-        env:
-          TAG: ${{ steps.meta.outputs.tag }}
-        run: |
-          version=$(jq -r .version custom_components/dual_smart_thermostat/manifest.json)
-          if [ "$version" != "$TAG" ]; then
-            echo "::error::manifest.json version ($version) does not match tag ($TAG)"
-            exit 1
-          fi
-
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
           TAG: ${{ steps.meta.outputs.tag }}
           TITLE: ${{ steps.meta.outputs.title }}
           PRERELEASE: ${{ inputs.prerelease }}
@@ -81,6 +68,19 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; nothing to do."
             exit 0
+          fi
+          if [ ! -f ".github/release-notes/$TAG.md" ]; then
+            if [ "$EVENT_NAME" = "push" ]; then
+              echo "::notice::No release notes at .github/release-notes/$TAG.md; skipping release."
+              exit 0
+            fi
+            echo "::error::Missing release notes file .github/release-notes/$TAG.md"
+            exit 1
+          fi
+          version=$(jq -r .version custom_components/dual_smart_thermostat/manifest.json)
+          if [ "$version" != "$TAG" ]; then
+            echo "::error::manifest.json version ($version) does not match tag ($TAG)"
+            exit 1
           fi
           args=()
           if [ "$PRERELEASE" = "true" ]; then
