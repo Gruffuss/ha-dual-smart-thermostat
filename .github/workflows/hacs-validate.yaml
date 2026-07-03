@@ -21,6 +21,9 @@ jobs:
         uses: hacs/action@main
         with:
           category: "integration"
+          # Repo-settings checks that fail on forks (no topics, issues
+          # disabled); the upstream repo satisfies them on its own CI.
+          ignore: "topics issues"
 
   validate_hassfest:
     name: Validate with Hassfest

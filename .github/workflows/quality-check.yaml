@@ -17,24 +17,44 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
+      # Forks don't have the SONAR_TOKEN secret; skip the scan (green) there
+      # instead of failing. Secrets aren't readable in job-level `if`, so the
+      # check happens in a step and the rest of the job keys off its output.
+      - name: Check for SonarCloud token
+        id: sonar-token
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SONAR_TOKEN is not configured; skipping SonarCloud scan."
+          fi
+
       - uses: actions/checkout@v7
+        if: steps.sonar-token.outputs.available == 'true'
         with:
           # Disabling shallow clone is recommended for improving relevancy of reporting
           fetch-depth: 0
 
       - name: Set up Python
+        if: steps.sonar-token.outputs.available == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: '3.14'
 
       - name: Install dependencies
+        if: steps.sonar-token.outputs.available == 'true'
         run: pip install -r requirements-dev.txt
 
       - name: Run tests with coverage
+        if: steps.sonar-token.outputs.available == 'true'
         run: |
           pytest --cov-report xml:coverage.xml --cov=custom_components
 
       - name: Verify coverage file exists
+        if: steps.sonar-token.outputs.available == 'true'
         run: |
           if [ -f coverage.xml ]; then
             echo "✓ Coverage file generated successfully"
@@ -45,6 +65,7 @@ jobs:
           fi
 
       - name: SonarCloud Scan
+        if: steps.sonar-token.outputs.available == 'true'
         uses: sonarsource/sonarcloud-github-action@master
         with:
           args: >
