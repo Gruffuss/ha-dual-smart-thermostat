@@ -1,0 +1,63 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create (e.g. v0.14.3)"
+        required: true
+        type: string
+      title:
+        description: "Release title (e.g. v0.14.3 - Upstream Sync)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate notes file exists
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ ! -f ".github/release-notes/$TAG.md" ]; then
+            echo "::error::Missing release notes file .github/release-notes/$TAG.md"
+            exit 1
+          fi
+
+      - name: Verify manifest version matches tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version=$(jq -r .version custom_components/dual_smart_thermostat/manifest.json)
+          if [ "$version" != "$TAG" ]; then
+            echo "::error::manifest.json version ($version) does not match tag ($TAG)"
+            exit 1
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          TITLE: ${{ inputs.title }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          args=()
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TITLE" \
+            --notes-file ".github/release-notes/$TAG.md" \
+            "${args[@]}"
