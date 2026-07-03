@@ -1,6 +1,9 @@
 name: Create Release
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -8,8 +11,8 @@ on:
         required: true
         type: string
       title:
-        description: "Release title (e.g. v0.14.3 - Upstream Sync)"
-        required: true
+        description: "Release title (overrides .github/release-notes/<tag>.title)"
+        required: false
         type: string
       prerelease:
         description: "Mark as pre-release"
@@ -26,9 +29,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Resolve tag and title
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_TITLE: ${{ inputs.title }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ]; then
+            tag="$REF_NAME"
+          else
+            tag="$INPUT_TAG"
+          fi
+          title="$INPUT_TITLE"
+          if [ -z "$title" ] && [ -f ".github/release-notes/$tag.title" ]; then
+            title=$(head -n 1 ".github/release-notes/$tag.title")
+          fi
+          if [ -z "$title" ]; then
+            title="$tag"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+
       - name: Validate notes file exists
         env:
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ steps.meta.outputs.tag }}
         run: |
           if [ ! -f ".github/release-notes/$TAG.md" ]; then
             echo "::error::Missing release notes file .github/release-notes/$TAG.md"
@@ -37,7 +63,7 @@ jobs:
 
       - name: Verify manifest version matches tag
         env:
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ steps.meta.outputs.tag }}
         run: |
           version=$(jq -r .version custom_components/dual_smart_thermostat/manifest.json)
           if [ "$version" != "$TAG" ]; then
@@ -48,10 +74,14 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag }}
-          TITLE: ${{ inputs.title }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          TITLE: ${{ steps.meta.outputs.title }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            exit 0
+          fi
           args=()
           if [ "$PRERELEASE" = "true" ]; then
             args+=(--prerelease)
