@@ -17,6 +17,16 @@ from custom_components.dual_smart_thermostat.hvac_device.pwm_heater_device impor
 from tests import common, setup_sensor, setup_switch
 
 
+@pytest.fixture
+def expected_lingering_timers() -> bool:
+    """These tests set up via YAML platform config, so there is no config
+    entry to unload and the entity is never removed. The PWM/valve timers
+    are cancelled on entity removal (async_on_remove), which teardown here
+    never triggers - tell the harness the scheduled timer is expected.
+    """
+    return True
+
+
 async def _setup_tpi_heater(
     hass: HomeAssistant,
     *,
