@@ -737,7 +737,8 @@
                     "sleep": "Sleep preset",
                     "anti_freeze": "Anti-freeze preset",
                     "activity": "Activity preset",
-                    "boost": "Boost preset"
+                    "boost": "Boost preset",
+                    "preset_auto_save": "Auto-save adjustments into the active preset"
                 },
                 "data_description": {
                     "away": "Energy-saving preset for when nobody is home. Typically set to lower temperatures to save energy.",
@@ -747,7 +748,8 @@
                     "sleep": "Optimized for sleeping conditions, often set slightly cooler for better sleep quality.",
                     "anti_freeze": "Minimum temperature preset to prevent freezing in unoccupied spaces or during extended absences.",
                     "activity": "Higher temperature preset for periods of high activity or when extra warmth is needed.",
-                    "boost": "Quick heating preset for rapidly bringing temperature up to a higher level."
+                    "boost": "Quick heating preset for rapidly bringing temperature up to a higher level.",
+                    "preset_auto_save": "When on, changing the temperature, humidity or fan speed from the thermostat while a preset is selected updates that preset, so it keeps your new value instead of reverting to the configured one."
                 }
             },
             "system_features": {
@@ -972,7 +974,8 @@
                     "sleep": "Sleep preset",
                     "anti_freeze": "Anti-freeze preset",
                     "activity": "Activity preset",
-                    "boost": "Boost preset"
+                    "boost": "Boost preset",
+                    "preset_auto_save": "Auto-save adjustments into the active preset"
                 },
                 "data_description": {
                     "away": "Energy-saving preset for when nobody is home. Typically set to lower temperatures to save energy.",
@@ -982,7 +985,8 @@
                     "sleep": "Optimized for sleeping conditions, often set slightly cooler for better sleep quality.",
                     "anti_freeze": "Minimum temperature preset to prevent freezing in unoccupied spaces or during extended absences.",
                     "activity": "Higher temperature preset for periods of high activity or when extra warmth is needed.",
-                    "boost": "Quick heating preset for rapidly bringing temperature up to a higher level."
+                    "boost": "Quick heating preset for rapidly bringing temperature up to a higher level.",
+                    "preset_auto_save": "When on, changing the temperature, humidity or fan speed from the thermostat while a preset is selected updates that preset, so it keeps your new value instead of reverting to the configured one."
                 }
             },
             "openings_options": {

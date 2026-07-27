@@ -20,6 +20,19 @@ from ..const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Config key -> PresetEnv attribute for the fields preset auto-save may
+# overwrite with the values a user dialed in from the UI. Kept in one place so
+# the manager, the persistence layer and the config flow agree on the names.
+AUTO_SAVE_FIELDS: dict[str, str] = {
+    ATTR_TEMPERATURE: "temperature",
+    ATTR_TARGET_TEMP_LOW: "target_temp_low",
+    ATTR_TARGET_TEMP_HIGH: "target_temp_high",
+    ATTR_HUMIDITY: "humidity",
+    CONF_FAN_MODE: "fan_mode",
+}
+
+_TEMP_FIELDS = ("temperature", "target_temp_low", "target_temp_high")
+
 
 def normalize_preset_temperature(value: float | None, field_name: str) -> float | None:
     """Return preset temperature unless it is a non-physical placeholder.
@@ -240,6 +253,82 @@ class PresetEnv(TempEnv, HumidityEnv):
     @property
     def to_dict(self) -> dict:
         return self.__dict__
+
+    def is_template_field(self, field_name: str) -> bool:
+        """Return True when the field is defined by a template, not a number."""
+        return field_name in self._template_fields
+
+    def update_values(self, values: dict[str, Any]) -> dict[str, Any]:
+        """Overwrite preset fields with live values (preset auto-save).
+
+        ``values`` is keyed by preset *config* key (``temperature``,
+        ``target_temp_low``, ``target_temp_high``, ``humidity``,
+        ``fan_mode``). Returns the subset that was actually applied so callers
+        know whether anything needs persisting.
+
+        Template-backed fields are skipped: the template *is* the preset's
+        definition, so a one-off nudge from the UI must not silently replace it
+        with a frozen number. Non-physical temperatures (<= 0) are skipped for
+        the same reason ``normalize_preset_temperature`` ignores them on read.
+        """
+        applied: dict[str, Any] = {}
+
+        for key, value in values.items():
+            field_name = AUTO_SAVE_FIELDS.get(key)
+            if field_name is None or value is None:
+                continue
+
+            if self.is_template_field(field_name):
+                _LOGGER.debug(
+                    "Preset auto-save skipping %s: defined by template %s",
+                    field_name,
+                    self._template_fields[field_name],
+                )
+                continue
+
+            if field_name in _TEMP_FIELDS:
+                value = normalize_preset_temperature(value, field_name)
+                if value is None:
+                    continue
+
+            if getattr(self, field_name) == value:
+                continue
+
+            setattr(self, field_name, value)
+            if field_name in _TEMP_FIELDS:
+                self._last_good_values[field_name] = float(value)
+            applied[key] = value
+
+        if applied:
+            _LOGGER.debug("Preset auto-save applied values: %s", applied)
+
+        return applied
+
+    def to_config_dict(self) -> dict[str, Any]:
+        """Return the preset as a config-shaped dict for persistence.
+
+        Mirrors the nested format the config/options flows store
+        (``{"away": {"temperature": 17.0}}``) and keeps template fields as
+        their original template strings.
+        """
+        config: dict[str, Any] = {}
+
+        for key, field_name in AUTO_SAVE_FIELDS.items():
+            if field_name in self._template_fields:
+                config[key] = self._template_fields[field_name]
+                continue
+            value = getattr(self, field_name)
+            if value is not None:
+                config[key] = value
+
+        if self.min_floor_temp is not None:
+            config[CONF_MIN_FLOOR_TEMP] = self.min_floor_temp
+        if self.max_floor_temp is not None:
+            config[CONF_MAX_FLOOR_TEMP] = self.max_floor_temp
+        if self.switches:
+            config[CONF_PRESET_SWITCHES] = list(self.switches)
+
+        return config
 
     def has_temp_range(self) -> bool:
         return self.target_temp_low is not None and self.target_temp_high is not None
