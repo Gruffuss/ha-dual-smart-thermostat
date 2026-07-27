@@ -37,6 +37,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.dual_smart_thermostat.const import (
     CONF_MAX_FLOOR_TEMP,
     CONF_MIN_FLOOR_TEMP,
+    CONF_PRESET_AUTO_SAVE,
     DOMAIN,
 )
 
@@ -549,6 +550,9 @@ async def setup_comp_heat_ac_cool_presets(hass: HomeAssistant) -> None:
                 "heater": common.ENT_SWITCH,
                 "target_sensor": common.ENT_SENSOR,
                 "initial_hvac_mode": HVACMode.COOL,
+                # These preset tests assert the legacy revert-on-reselect
+                # behavior, which requires preset auto-save to be off.
+                CONF_PRESET_AUTO_SAVE: False,
                 PRESET_AWAY: {"temperature": 16},
                 PRESET_ACTIVITY: {"temperature": 21},
                 PRESET_COMFORT: {"temperature": 20},
@@ -668,6 +672,9 @@ async def setup_comp_heat_presets(hass: HomeAssistant) -> None:
                 "heater": common.ENT_HEATER,
                 "target_sensor": common.ENT_SENSOR,
                 "initial_hvac_mode": HVACMode.HEAT,
+                # These preset tests assert the legacy revert-on-reselect
+                # behavior, which requires preset auto-save to be off.
+                CONF_PRESET_AUTO_SAVE: False,
                 PRESET_AWAY: {"temperature": 16},
                 PRESET_ACTIVITY: {"temperature": 21},
                 PRESET_COMFORT: {"temperature": 20},
@@ -1032,6 +1039,9 @@ async def setup_comp_heat_cool_presets(hass: HomeAssistant) -> None:
                 "cooler": common.ENT_COOLER,
                 "target_sensor": common.ENT_SENSOR,
                 "initial_hvac_mode": HVACMode.HEAT_COOL,
+                # These preset tests assert the legacy revert-on-reselect
+                # behavior, which requires preset auto-save to be off.
+                CONF_PRESET_AUTO_SAVE: False,
                 PRESET_AWAY: {
                     "temperature": 16,
                     "target_temp_low": 16,

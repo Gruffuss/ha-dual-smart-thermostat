@@ -183,6 +183,14 @@ CONF_PRESET_SWITCHES = "switches"
 # extra_state_attributes key holding the pre-preset baseline for restore.
 ATTR_PRESET_ACTION_BASELINE = "preset_action_baseline"
 
+# Preset auto-save: adjustments made from the UI while a preset is active are
+# written back into that preset so it stops reverting to the configured value.
+CONF_PRESET_AUTO_SAVE = "preset_auto_save"
+DEFAULT_PRESET_AUTO_SAVE = True
+# hass.data key holding, per config entry id, the number of pending auto-save
+# writes whose config entry update listener must not trigger a reload.
+DATA_PRESET_AUTO_SAVE_WRITES = "preset_auto_save_writes"
+
 CONF_PRESETS = {
     p: f"{p.replace(' ', '_').lower()}"
     for p in (

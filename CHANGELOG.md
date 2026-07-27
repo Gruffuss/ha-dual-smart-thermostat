@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Preset Auto-Save** - Adjusting the target temperature, humidity or fan speed from the thermostat while a preset is selected now updates that preset instead of reverting the next time the preset is re-applied (re-selecting it, presence restoring it, a template re-render, or a restart)
+  - Enabled by default via the new `preset_auto_save` option; set it to `false` to keep the classic revert-to-configured behavior
+  - Persists the updated value back to the config entry (without reloading the integration) so the preset configuration shown in the options flow stays in sync
+  - Template-based preset values are never overwritten, keeping the template as the source of truth
+  - Exposed on the preset selection step of the config, reconfigure and options flows, and in the YAML platform schema
 - **Native Fan Speed Control** - Control fan speeds (low, medium, high, auto) directly from the thermostat interface, similar to built-in thermostats (#517)
   - Automatic detection of fan entity capabilities (preset_mode and percentage support)
   - Fan speed control works in FAN_ONLY mode, fan_on_with_ac mode, and fan tolerance mode

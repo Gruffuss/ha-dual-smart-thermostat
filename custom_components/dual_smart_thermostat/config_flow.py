@@ -23,10 +23,12 @@ from .const import (
     CONF_HEATER,
     CONF_HUMIDITY_SENSOR,
     CONF_PRECISION,
+    CONF_PRESET_AUTO_SAVE,
     CONF_PRESETS,
     CONF_SENSOR,
     CONF_SYSTEM_TYPE,
     CONF_TEMP_STEP,
+    DEFAULT_PRESET_AUTO_SAVE,
     DOMAIN,
     SYSTEM_TYPE_SIMPLE_HEATER,
     SystemType,
@@ -713,7 +715,12 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="preset_selection",
-            data_schema=get_preset_selection_schema(defaults=defaults),
+            data_schema=get_preset_selection_schema(
+                defaults=defaults,
+                auto_save_default=self.collected_config.get(
+                    CONF_PRESET_AUTO_SAVE, DEFAULT_PRESET_AUTO_SAVE
+                ),
+            ),
         )
 
     async def async_step_presets(

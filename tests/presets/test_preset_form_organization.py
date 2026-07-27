@@ -22,11 +22,12 @@ def test_preset_selection_schema():
     """Test preset selection schema has all presets."""
     schema = get_preset_selection_schema()
     schema_dict = schema.schema
-    # Current implementation exposes a single multi-select field named 'presets'
-    # containing all available preset options.
-    assert len(schema_dict) == 1
+    # The step exposes the multi-select 'presets' field plus the
+    # 'preset_auto_save' toggle.
+    assert len(schema_dict) == 2
     # ensure the presets key is present in the schema mapping
-    assert any("presets" in str(k) for k in schema_dict.keys())
+    assert any("presets" in str(k) for k in schema_dict)
+    assert any("preset_auto_save" in str(k) for k in schema_dict)
 
 
 def test_preset_schema_with_selected_presets_only():
