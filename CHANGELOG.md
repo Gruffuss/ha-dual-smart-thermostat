@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [v0.15.0] - 2026-07-27
+
 ### Added
 
 - **Preset Auto-Save** - Adjusting the target temperature, humidity or fan speed from the thermostat while a preset is selected now updates that preset instead of reverting the next time the preset is re-applied (re-selecting it, presence restoring it, a template re-render, or a restart)
@@ -14,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Persists the updated value back to the config entry (without reloading the integration) so the preset configuration shown in the options flow stays in sync
   - Template-based preset values are never overwritten, keeping the template as the source of truth
   - Exposed on the preset selection step of the config, reconfigure and options flows, and in the YAML platform schema
+
+## v0.12.0 - v0.14.3
+
+This changelog was not maintained across these versions. Release notes for
+them are published on the
+[GitHub Releases page](https://github.com/Gruffuss/ha-dual-smart-thermostat/releases).
+
+## v0.11.3 - 2026-03-05
+
+### Added
+
 - **Native Fan Speed Control** - Control fan speeds (low, medium, high, auto) directly from the thermostat interface, similar to built-in thermostats (#517)
   - Automatic detection of fan entity capabilities (preset_mode and percentage support)
   - Fan speed control works in FAN_ONLY mode, fan_on_with_ac mode, and fan tolerance mode
@@ -52,6 +67,7 @@ See [RELEASE_NOTES_v0.11.0.md](RELEASE_NOTES_v0.11.0.md) for complete release no
 - Input Boolean Support for Equipment - Use input_boolean entities for all equipment controls
 - Docker-Based Development Environment - Professional development workflow for contributors
 
-[Unreleased]: https://github.com/swingerman/ha-dual-smart-thermostat/compare/v0.11.2...HEAD
+[Unreleased]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.15.0...HEAD
+[v0.15.0]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.14.3...v0.15.0
 [v0.11.2]: https://github.com/swingerman/ha-dual-smart-thermostat/compare/v0.11.0...v0.11.2
 [v0.11.0]: https://github.com/swingerman/ha-dual-smart-thermostat/releases/tag/v0.11.0
