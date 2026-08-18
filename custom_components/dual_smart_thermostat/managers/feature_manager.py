@@ -365,12 +365,6 @@ class FeatureManager(StateManager):
 
     def _restore_fan_mode(self, old_state: State) -> None:
         """Restore fan mode from old state."""
-        if not self.supports_fan_mode:
-            _LOGGER.debug(
-                "Fan mode restoration skipped: device does not support speed control"
-            )
-            return
-
         if self._fan_device is None:
             _LOGGER.debug("Fan mode restoration skipped: no fan device")
             return

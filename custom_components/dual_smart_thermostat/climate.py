@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.components.climate import (
     PLATFORM_SCHEMA,
     ClimateEntity,
+    ClimateEntityFeature,
     HVACAction,
     HVACMode,
 )
@@ -1797,6 +1798,18 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         """Handle heater switch state changes."""
 
         data = event.data
+
+        # The fan entity may only now have turned up (issue #636). Only the
+        # FAN_MODE bit can have changed, so set it directly - a full
+        # _set_support_flags() would also reset target temps from presets.
+        fan_device = self.features.fan_device
+        if (
+            fan_device is not None
+            and data["new_state"] is not None
+            and fan_device.redetect_capabilities(data["entity_id"], data["new_state"])
+        ):
+            self._attr_supported_features |= ClimateEntityFeature.FAN_MODE
+
         self._async_switch_changed(data["old_state"], data["new_state"])
 
     @callback
