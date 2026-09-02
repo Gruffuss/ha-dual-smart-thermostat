@@ -7,7 +7,7 @@ from homeassistant.core import Context, HomeAssistant, State, callback
 from ..hvac_action_reason.hvac_action_reason import HVACActionReason
 from ..hvac_device.controllable_hvac_device import ControlableHVACDevice
 from ..hvac_device.hvac_device import HVACDevice
-from ..managers.environment_manager import EnvironmentManager
+from ..managers.environment_manager import EnvironmentManager, TargetTemperatures
 from ..managers.feature_manager import FeatureManager
 from ..managers.opening_manager import OpeningManager
 
@@ -52,6 +52,19 @@ class MultiHvacDevice(HVACDevice, ControlableHVACDevice):
         super().reset_hvac_action_reason()
         for device in self.hvac_devices:
             device.reset_hvac_action_reason()
+
+    # override
+    def on_target_temperature_change(self, temperatures: TargetTemperatures) -> None:
+        """Forward the new target to every sub-device.
+
+        The base implementation is a no-op, so without this a sub-device that
+        acts on a target change - a wrapped climate entity pushing the setpoint
+        to the real AC - never heard about it, and only picked the value up on
+        its next off -> on transition.
+        """
+        super().on_target_temperature_change(temperatures)
+        for device in self.hvac_devices:
+            device.on_target_temperature_change(temperatures)
 
     # override
     async def async_turn_off_unless_used(self, in_use: set[str]) -> None:
