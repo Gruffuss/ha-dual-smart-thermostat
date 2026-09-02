@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [v0.15.1] - 2026-09-02
+
+### Fixed
+
+- **Per-mode setpoint persistence** - a target temperature captured in one HVAC mode could resurface in the other, because the saved target temperature was not mode-scoped and outranked the mode's own configured bound (upstream #641, #643)
+  - Hit when turning a preset off after switching modes (heat -> preset -> cool -> preset off), and whenever anything re-applied the already-active preset (scheduler tick, UI resend, re-selecting the same preset)
+  - Both call sites now resolve through a single `_bound_for_mode` helper; `saved_target_temp` remains the fallback for modes with no bound to use
+- Fan speed control is re-detected when the fan entity appears after startup, and a fan mode selected while it was missing is replayed (upstream #636, #638)
+- `fan_on_with_heater` now takes effect on systems that also have a cooler configured (upstream #637, #639)
+- Reconfigure is no longer silently shadowed by a stale `entry.options` snapshot (upstream #631, #634)
+- The reconfigure wizard now seeds from the entry's effective configuration (`{**data, **options}`) rather than `data` alone, so options-flow settings are not dropped when reconfigure clears `entry.options`
+- A wrapped climate cooler that came online late regained fan/swing passthrough; `WrappedClimateDevice` gained a `redetect_capabilities` shim after it started being called through the fan-device duck type
+
+### Changed
+
+- pip-audit is now report-only; the security gate moved to `bandit` over `custom_components`, replacing an `--ignore-vuln` list that needed editing on every Home Assistant bump (upstream #640)
+
 ## [v0.15.0] - 2026-07-27
 
 ### Added
@@ -67,7 +84,8 @@ See [RELEASE_NOTES_v0.11.0.md](RELEASE_NOTES_v0.11.0.md) for complete release no
 - Input Boolean Support for Equipment - Use input_boolean entities for all equipment controls
 - Docker-Based Development Environment - Professional development workflow for contributors
 
-[Unreleased]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.15.1...HEAD
+[v0.15.1]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.15.0...v0.15.1
 [v0.15.0]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.14.3...v0.15.0
 [v0.11.2]: https://github.com/swingerman/ha-dual-smart-thermostat/compare/v0.11.0...v0.11.2
 [v0.11.0]: https://github.com/swingerman/ha-dual-smart-thermostat/releases/tag/v0.11.0
