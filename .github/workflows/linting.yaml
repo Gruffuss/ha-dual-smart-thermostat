@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: "pip"
@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       - name: isort
-        run: isort . --recursive --diff
+        run: isort . --check-only --diff
       - name: Black
         run: black --check .
       - name: Flake8

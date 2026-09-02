@@ -22,7 +22,9 @@ config/*
 
 # specify
 .specify/scripts/
-.claude/
+.claude/*
+!.claude/commands/
+!.claude/skills/
 
 # Local test virtualenv (Claude Code on the web)
 .venv/

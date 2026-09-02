@@ -1753,6 +1753,12 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
                     self.sensor_entity_id,
                     new_state,
                 )
+                # The reason still held everywhere is the pre-stall one: the
+                # emergency stop turned the device off without a controller
+                # deciding anything. Clear it down the whole device tree so the
+                # control run below starts from a clean slate - if the fresh
+                # reading calls for no action, no stale reason resurfaces.
+                self.hvac_device.reset_hvac_action_reason()
                 self._hvac_action_reason = self.hvac_device.HVACActionReason
                 self._publish_hvac_action_reason(self._hvac_action_reason)
                 self.async_write_ha_state()
@@ -2241,6 +2247,20 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self.hvac_device.on_entity_state_changed(data["entity_id"], new_state)
             self._refresh_passthrough_support_flags()
 
+        # A standalone fan entity is not reached by the branch above (FanDevice
+        # has no on_entity_state_changed); it may only now have turned up
+        # (upstream issue #636). Only the FAN_MODE bit can have changed, so set
+        # it directly - a full _set_support_flags() would also reset target
+        # temps from presets. This also replays a fan mode that was selected
+        # while the entity was still missing.
+        fan_device = self.features.fan_device
+        if (
+            fan_device is not None
+            and new_state is not None
+            and fan_device.redetect_capabilities(data["entity_id"], new_state)
+        ):
+            self._attr_supported_features |= ClimateEntityFeature.FAN_MODE
+
         self._async_switch_changed(data["old_state"], new_state)
 
     @callback
@@ -2270,7 +2290,10 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         if new_state is None:
             return
         if old_state is None:
-            self.hass.create_task(self._check_device_initial_state())
+            # async_create_task (eager) not create_task: we are already on the
+            # event loop, and create_task's call_soon_threadsafe defers the run
+            # by a loop iteration, racing whatever the caller does next.
+            self.hass.async_create_task(self._check_device_initial_state())
 
         self.async_write_ha_state()
 
@@ -2283,7 +2306,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             _LOGGER.debug(
                 "Resuming from state. Old state is None, New State: %s", new_state
             )
-            self.hass.create_task(self._async_control_climate())
+            self.hass.async_create_task(self._async_control_climate())
 
         if old_state is not None and new_state is not None:
             _LOGGER.debug(
@@ -2298,7 +2321,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
                 STATE_UNAVAILABLE,
                 STATE_UNKNOWN,
             ):
-                self.hass.create_task(self._async_control_climate())
+                self.hass.async_create_task(self._async_control_climate())
 
     @property
     def _is_device_active(self) -> bool:

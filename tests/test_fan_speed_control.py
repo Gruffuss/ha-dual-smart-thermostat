@@ -181,6 +181,14 @@ async def test_fan_device_switch_no_speed_control(hass: HomeAssistant):
     assert fan_device.supports_fan_mode is False
     assert fan_device.fan_modes == []
 
+    # A switch can never gain speed control, so re-detection changes nothing.
+    assert (
+        fan_device.redetect_capabilities(
+            "switch.test_fan", hass.states.get("switch.test_fan")
+        )
+        is False
+    )
+
 
 @pytest.mark.asyncio
 async def test_fan_device_missing_entity_no_speed_control(hass: HomeAssistant):
@@ -1856,3 +1864,120 @@ async def test_fan_activates_with_restored_fan_mode(hass: HomeAssistant):
     # Should have set fan mode to "high"
     if len(preset_mode_calls) > 0:
         assert any(call.data.get("preset_mode") == "high" for call in preset_mode_calls)
+
+
+@pytest.mark.asyncio
+async def test_late_fan_ignores_other_entities(hass: HomeAssistant):
+    """Only the fan's own entity triggers detection (#636)."""
+    fan_device = FanDevice(
+        hass,
+        "fan.late_fan",
+        timedelta(seconds=5),
+        HVACMode.FAN_ONLY,
+        MagicMock(spec=EnvironmentManager),
+        MagicMock(spec=OpeningManager),
+        MagicMock(spec=FeatureManager),
+        MagicMock(spec=HvacPowerManager),
+    )
+
+    hass.states.async_set(
+        "fan.late_fan", "off", {"preset_modes": ["quiet"], "preset_mode": "quiet"}
+    )
+    assert (
+        fan_device.redetect_capabilities(
+            "switch.heater", hass.states.get("fan.late_fan")
+        )
+        is False
+    )
+    assert fan_device.supports_fan_mode is False
+
+
+@pytest.mark.asyncio
+async def test_restored_fan_mode_applied_when_entity_appears_late(hass: HomeAssistant):
+    """A mode restored before the entity existed is applied once it does (#636)."""
+    fan_device = FanDevice(
+        hass,
+        "fan.late_fan",
+        timedelta(seconds=5),
+        HVACMode.FAN_ONLY,
+        MagicMock(spec=EnvironmentManager),
+        MagicMock(spec=OpeningManager),
+        MagicMock(spec=FeatureManager),
+        MagicMock(spec=HvacPowerManager),
+    )
+
+    # Restore runs at startup, before the entity is available
+    fan_device.restore_fan_mode("boost")
+    assert fan_device.current_fan_mode is None
+
+    hass.states.async_set(
+        "fan.late_fan",
+        "off",
+        {"preset_modes": ["quiet", "boost"], "preset_mode": "quiet"},
+    )
+    assert (
+        fan_device.redetect_capabilities(
+            "fan.late_fan", hass.states.get("fan.late_fan")
+        )
+        is True
+    )
+
+    assert fan_device.fan_modes == ["quiet", "boost"]
+    assert fan_device.current_fan_mode == "boost"
+
+
+@pytest.mark.asyncio
+async def test_climate_gains_fan_mode_when_fan_entity_appears_late(
+    hass: HomeAssistant,
+):
+    """End-to-end of #636: fan_modes appear without an integration reload."""
+    from homeassistant.components import input_boolean
+    from homeassistant.components.climate.const import (
+        DOMAIN as CLIMATE,
+        ClimateEntityFeature,
+    )
+    from homeassistant.setup import async_setup_component
+    from homeassistant.util.unit_system import METRIC_SYSTEM
+
+    from custom_components.dual_smart_thermostat.const import DOMAIN
+
+    from . import common
+
+    hass.config.units = METRIC_SYSTEM
+
+    assert await async_setup_component(
+        hass, input_boolean.DOMAIN, {"input_boolean": {"test": None}}
+    )
+
+    # Deliberately do not create fan.late_fan before setting up the thermostat
+    assert await async_setup_component(
+        hass,
+        CLIMATE,
+        {
+            "climate": {
+                "platform": DOMAIN,
+                "name": "test",
+                "heater": "input_boolean.test",
+                "target_sensor": common.ENT_SENSOR,
+                "fan": "fan.late_fan",
+                "initial_hvac_mode": HVACMode.HEAT,
+            }
+        },
+    )
+    await hass.async_block_till_done()
+
+    state = hass.states.get("climate.test")
+    assert not (
+        state.attributes.get("supported_features") & ClimateEntityFeature.FAN_MODE
+    )
+
+    hass.states.async_set(
+        "fan.late_fan",
+        "off",
+        {"preset_modes": ["quiet", "boost"], "preset_mode": "quiet"},
+    )
+    await hass.async_block_till_done()
+
+    state = hass.states.get("climate.test")
+    assert state.attributes.get("supported_features") & ClimateEntityFeature.FAN_MODE
+    assert set(state.attributes.get("fan_modes")) == {"quiet", "boost"}
