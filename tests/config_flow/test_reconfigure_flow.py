@@ -29,6 +29,7 @@ def mock_config_entry():
         CONF_HEATER: "switch.heater",
         CONF_SENSOR: "sensor.temperature",
     }
+    entry.options = {}
     return entry
 
 
@@ -250,6 +251,7 @@ async def test_reconfigure_all_system_types():
             CONF_HEATER: "switch.heater",
             CONF_SENSOR: "sensor.temp",
         }
+        mock_entry.options = {}
 
         with patch.object(
             type(flow),
@@ -402,3 +404,35 @@ if __name__ == "__main__":
 
     success = asyncio.run(run_all_tests())
     sys.exit(0 if success else 1)
+
+
+async def test_reconfigure_seeds_from_data_and_options(mock_config_entry):
+    """Options-flow settings must survive reconfigure clearing entry.options.
+
+    At runtime climate.py reads ``{**entry.data, **entry.options}``, and a
+    successful reconfigure now clears entry.options so it can no longer shadow
+    the fresh entry.data (upstream #631). Seeding the wizard from entry.data
+    alone would therefore silently drop anything the user set through the
+    options flow - presets, openings, advanced settings - replacing it with
+    whatever stale value data happened to hold.
+    """
+    mock_config_entry.options = {
+        # same key in both: options wins, mirroring the runtime merge
+        CONF_SENSOR: "sensor.from_options",
+        # options-only key: must not be lost when options is cleared
+        "comfort": {"temperature": 23.5},
+    }
+
+    flow = ConfigFlowHandler()
+    flow.hass = Mock()
+
+    with patch.object(
+        type(flow), "source", new_callable=PropertyMock, return_value=SOURCE_RECONFIGURE
+    ):
+        flow._get_reconfigure_entry = Mock(return_value=mock_config_entry)
+        await flow.async_step_reconfigure()
+
+    assert flow.collected_config[CONF_SENSOR] == "sensor.from_options"
+    assert flow.collected_config["comfort"] == {"temperature": 23.5}
+    # data-only keys are still carried through
+    assert flow.collected_config[CONF_HEATER] == "switch.heater"
