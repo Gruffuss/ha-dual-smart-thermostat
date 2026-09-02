@@ -1595,6 +1595,12 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self.environment.set_temperature_target(temperature)
             self._target_temp = self.environment.target_temp
 
+            # A single-setpoint system (a plain AC, say) took this branch and
+            # never told the device tree the target had moved, so a wrapped
+            # climate entity only ever learned a new setpoint on its next
+            # off -> on transition.
+            self.hvac_device.on_target_temperature_change(temperatures)
+
         # If a preset is active, fold the new value into it (auto-save) instead
         # of letting it be treated as a candidate for a *different* preset.
         if await self._async_autosave_active_preset("temperatures"):
@@ -1692,8 +1698,6 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         temp_low = temperatures.temp_low
         temp_high = temperatures.temp_high
 
-        self.hvac_device.on_target_temperature_change(temperatures)
-
         if self.features.is_target_mode:
             if temperature is None:
                 return
@@ -1705,6 +1709,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self._target_temp = self.environment.target_temp
             self._target_temp_low = self.environment.target_temp_low
             self._target_temp_high = self.environment.target_temp_high
+
+            self.hvac_device.on_target_temperature_change(temperatures)
 
         elif self.features.is_range_mode:
             self.environment.set_temperature_range(temperature, temp_low, temp_high)
@@ -1722,6 +1728,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self._target_temp = self.environment.target_temp
             self._target_temp_low = self.environment.target_temp_low
             self._target_temp_high = self.environment.target_temp_high
+
+            self.hvac_device.on_target_temperature_change(temperatures)
 
     async def _async_sensor_changed_event(
         self, event: Event[EventStateChangedData]
