@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [v0.15.2] - 2026-09-02
+
+### Fixed
+
+- **Target temperature now reaches a wrapped climate (AC) entity when it changes** - the only path that ever pushed a setpoint was the AC's off -> on transition, so an AC already running and staying running kept its old setpoint indefinitely
+  - `MultiHvacDevice` did not forward `on_target_temperature_change` to its sub-devices, so on a heater + wrapped-AC system (a `HeaterCoolerDevice`) the call landed on the base no-op and never reached the AC
+  - `async_set_temperature` never emitted the notification at all on the single-setpoint branch, so a cooling-only system never sent one
+  - `_set_temperatures_dual_mode` emitted it before writing the new target to the environment, so a device re-reading the target could pick up the previous value; both branches now notify after the environment holds the new value
+
 ## [v0.15.1] - 2026-09-02
 
 ### Fixed
@@ -84,7 +93,8 @@ See [RELEASE_NOTES_v0.11.0.md](RELEASE_NOTES_v0.11.0.md) for complete release no
 - Input Boolean Support for Equipment - Use input_boolean entities for all equipment controls
 - Docker-Based Development Environment - Professional development workflow for contributors
 
-[Unreleased]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.15.2...HEAD
+[v0.15.2]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.15.1...v0.15.2
 [v0.15.1]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.15.0...v0.15.1
 [v0.15.0]: https://github.com/Gruffuss/ha-dual-smart-thermostat/compare/v0.14.3...v0.15.0
 [v0.11.2]: https://github.com/swingerman/ha-dual-smart-thermostat/compare/v0.11.0...v0.11.2
