@@ -172,6 +172,17 @@ class WrappedClimateDevice(CoolerDevice):
             self.entity_id,
         )
 
+    def redetect_capabilities(self, entity_id: str, new_state: State) -> bool:
+        """No-op: on_entity_state_changed already refreshes our capabilities.
+
+        Provided for duck-typing compatibility with ``FanDevice``, which the
+        factory may register as the fan device in our place. Returning False
+        keeps the caller from setting the FAN_MODE bit here - the thermostat's
+        _refresh_passthrough_support_flags already adds it (along with
+        SWING_MODE) straight after forwarding the state change to us.
+        """
+        return False
+
     @property
     def supports_swing_mode(self) -> bool:
         return self._supports_swing_mode
