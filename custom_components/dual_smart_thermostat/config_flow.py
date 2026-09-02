@@ -199,9 +199,16 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         # Get the existing config entry being reconfigured
         entry = self._get_reconfigure_entry()
 
-        # Initialize collected_config with current data
-        # This ensures all existing settings are preserved unless changed
-        self.collected_config = dict(entry.data)
+        # Initialize collected_config with the entry's effective configuration.
+        # climate.py runs on {**entry.data, **entry.options}, and finishing this
+        # flow clears entry.options so it can no longer shadow the fresh
+        # entry.data (see _async_finish_flow). Seeding from entry.data alone
+        # would therefore drop everything the user configured through the
+        # options flow - presets, openings, advanced settings - and silently
+        # replace it with whatever stale value entry.data still held. Merge in
+        # the same order the runtime does so the wizard pre-fills what is
+        # actually in effect, and carries it back into entry.data on save.
+        self.collected_config = {**entry.data, **entry.options}
 
         # Normalize config values from storage (convert dict timedelta back to timedelta)
         self.collected_config = self._normalize_config_from_storage(

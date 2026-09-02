@@ -30,6 +30,7 @@ from custom_components.dual_smart_thermostat.const import (
 def heater_cooler_entry():
     """Create a mock config entry for heater+cooler system."""
     entry = Mock()
+    entry.options = {}
     entry.entry_id = "test_heater_cooler"
     entry.data = {
         CONF_NAME: "Heater Cooler",

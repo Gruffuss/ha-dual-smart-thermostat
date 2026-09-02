@@ -33,6 +33,7 @@ from custom_components.dual_smart_thermostat.const import (
 def heat_pump_entry_with_features():
     """Create a mock config entry for heat pump system with features."""
     entry = Mock()
+    entry.options = {}
     entry.entry_id = "test_heat_pump"
     entry.data = {
         CONF_NAME: "Living Room",
@@ -52,6 +53,7 @@ def heat_pump_entry_with_features():
 def heater_cooler_entry_with_features():
     """Create a mock config entry for heater+cooler system with features."""
     entry = Mock()
+    entry.options = {}
     entry.entry_id = "test_heater_cooler"
     entry.data = {
         CONF_NAME: "Bedroom",

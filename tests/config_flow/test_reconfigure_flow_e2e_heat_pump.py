@@ -30,6 +30,7 @@ from custom_components.dual_smart_thermostat.const import (
 def heat_pump_entry():
     """Create a mock config entry for heat pump system."""
     entry = Mock()
+    entry.options = {}
     entry.entry_id = "test_heat_pump"
     entry.data = {
         CONF_NAME: "Heat Pump",
