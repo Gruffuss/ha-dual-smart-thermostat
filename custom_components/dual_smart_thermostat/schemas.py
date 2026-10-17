@@ -76,6 +76,7 @@ from .const import (
     CONF_TPI_COEF_INT,
     CONF_VALVE_MAINTENANCE,
     CONF_VALVE_MAINTENANCE_INTERVAL,
+    CONF_VALVE_MAINTENANCE_OPEN_MINUTES,
     DEFAULT_PREDICTIVE_GATE,
     DEFAULT_PREDICTIVE_INITIAL_K_LOSS,
     DEFAULT_PREDICTIVE_KI,
@@ -87,6 +88,7 @@ from .const import (
     DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
     DEFAULT_VALVE_MAINTENANCE_INTERVAL,
+    DEFAULT_VALVE_MAINTENANCE_OPEN_MINUTES,
     SYSTEM_TYPES,
     HeaterControlMode,
     SystemType,
@@ -198,7 +200,7 @@ def get_system_type_schema(default: str | None = None):
     """Get system type selection schema.
 
     Args:
-        default: Optional default system type to pre-select (used in reconfigure flow)
+        default: Optional default system type to preselect (used in reconfigure flow)
 
     Returns:
         vol.Schema with system type selection
@@ -476,6 +478,18 @@ def get_heating_control_fields(
             ),
         )
     ] = get_number_selector(min_value=1, max_value=60, step=1, unit_of_measurement="d")
+
+    fields[
+        vol.Optional(
+            CONF_VALVE_MAINTENANCE_OPEN_MINUTES,
+            default=defaults.get(
+                CONF_VALVE_MAINTENANCE_OPEN_MINUTES,
+                DEFAULT_VALVE_MAINTENANCE_OPEN_MINUTES,
+            ),
+        )
+    ] = get_number_selector(
+        min_value=1, max_value=30, step=1, unit_of_measurement="min"
+    )
 
     return fields
 
@@ -873,7 +887,7 @@ def get_features_schema(
 
     Args:
         system_type: The type of system (SystemType enum value or string)
-        defaults: Optional defaults dict to pre-select features (for options flow)
+        defaults: Optional defaults dict to preselect features (for options flow)
 
     Returns:
         Schema with appropriate feature toggles based on system type
@@ -1310,7 +1324,7 @@ def get_preset_selection_schema(
 ):
     """Get preset selection schema.
 
-    Accepts an optional list of preset keys to pre-select in the multi-select
+    Accepts an optional list of preset keys to preselect in the multi-select
     selector (used by the options flow to pre-check presets that have
     configuration data stored in the entry).
 

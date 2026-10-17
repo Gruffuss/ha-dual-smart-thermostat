@@ -145,6 +145,8 @@ SERVICE_RESET_HEATING_POWER = "reset_heating_power"
 
 # Valve maintenance (periodic anti-stick exercise of the heater switch)
 CONF_VALVE_MAINTENANCE = "valve_maintenance"
+CONF_VALVE_MAINTENANCE_OPEN_MINUTES = "valve_maintenance_open_minutes"
+DEFAULT_VALVE_MAINTENANCE_OPEN_MINUTES = 6
 CONF_VALVE_MAINTENANCE_INTERVAL = "valve_maintenance_interval"
 DEFAULT_VALVE_MAINTENANCE_INTERVAL = 7  # days
 SERVICE_RUN_VALVE_MAINTENANCE = "run_valve_maintenance"

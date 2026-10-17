@@ -154,3 +154,80 @@ async def test_simple_heater_default_advanced_settings(
 
     # Check that defaults are applied for optional fields
     # Note: Actual default handling may vary based on schema implementation
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reconfigure", [False, True])
+async def test_valve_hold_flow_persistence(hass, reconfigure):
+    """Both initial and reconfigure forms persist the actual selector input."""
+    from unittest.mock import patch
+
+    from homeassistant.config_entries import SOURCE_RECONFIGURE
+    from homeassistant.helpers.selector import NumberSelector
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.dual_smart_thermostat.config_flow import ConfigFlowHandler
+    from custom_components.dual_smart_thermostat.const import DOMAIN
+    from custom_components.dual_smart_thermostat.options_flow import OptionsFlowHandler
+
+    data = {
+        "name": "hold",
+        "system_type": "simple_heater",
+        "heater": "switch.heater",
+        "target_sensor": "sensor.room",
+        "valve_maintenance": True,
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data=data, title="hold")
+    entry.add_to_hass(hass)
+    flow = ConfigFlowHandler()
+    flow.hass = hass
+    if reconfigure:
+        flow.context = {"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id}
+        await flow.async_step_reconfigure()
+        form = await flow.async_step_reconfigure_confirm(
+            {"system_type": "simple_heater"}
+        )
+    else:
+        form = await flow.async_step_user({"system_type": "simple_heater"})
+    section = form["data_schema"].schema["advanced_settings"].schema
+    selector = section.schema["valve_maintenance_open_minutes"]
+    assert isinstance(selector, NumberSelector)
+    submitted = form["data_schema"](
+        {
+            "name": "hold",
+            "heater": "switch.heater",
+            "target_sensor": "sensor.room",
+            "advanced_settings": {
+                "valve_maintenance": True,
+                "valve_maintenance_open_minutes": 9,
+            },
+        }
+    )
+    await flow.async_step_basic(submitted)
+    with patch(
+        "homeassistant.config_entries.ConfigEntries.async_reload", return_value=True
+    ):
+        result = await flow.async_step_features(
+            {
+                "configure_floor_heating": False,
+                "configure_openings": False,
+                "configure_presets": False,
+            }
+        )
+    saved = entry.data if reconfigure else result["data"]
+    assert saved["valve_maintenance_open_minutes"] == 9
+    options_entry = MockConfigEntry(domain=DOMAIN, data=saved, title="hold")
+    options_entry.add_to_hass(hass)
+    options = OptionsFlowHandler(options_entry)
+    options.hass = hass
+    form = await options.async_step_init()
+    submitted = form["data_schema"](
+        {
+            "advanced_settings": {
+                "valve_maintenance": True,
+                "valve_maintenance_open_minutes": 12,
+            }
+        }
+    )
+    result = await options.async_step_init(submitted)
+    assert result["data"]["valve_maintenance_open_minutes"] == 12

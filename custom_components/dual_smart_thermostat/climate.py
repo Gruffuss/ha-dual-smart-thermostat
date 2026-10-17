@@ -155,6 +155,7 @@ from .const import (
     CONF_USE_APPARENT_TEMP,
     CONF_VALVE_MAINTENANCE,
     CONF_VALVE_MAINTENANCE_INTERVAL,
+    CONF_VALVE_MAINTENANCE_OPEN_MINUTES,
     DEFAULT_MAX_FLOOR_TEMP,
     DEFAULT_NAME,
     DEFAULT_PREDICTIVE_GATE,
@@ -168,6 +169,7 @@ from .const import (
     DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
     DEFAULT_VALVE_MAINTENANCE_INTERVAL,
+    DEFAULT_VALVE_MAINTENANCE_OPEN_MINUTES,
     MIN_CYCLE_KEEP_ALIVE,
     SERVICE_RESET_HEATING_POWER,
     SERVICE_RUN_VALVE_MAINTENANCE,
@@ -320,6 +322,10 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             CONF_PREDICTIVE_INITIAL_K_LOSS, default=DEFAULT_PREDICTIVE_INITIAL_K_LOSS
         ): vol.Coerce(float),
         vol.Optional(CONF_VALVE_MAINTENANCE, default=False): cv.boolean,
+        vol.Optional(
+            CONF_VALVE_MAINTENANCE_OPEN_MINUTES,
+            default=DEFAULT_VALVE_MAINTENANCE_OPEN_MINUTES,
+        ): vol.All(vol.Coerce(float), vol.In(range(1, 31)), vol.Coerce(int)),
         vol.Optional(
             CONF_VALVE_MAINTENANCE_INTERVAL,
             default=DEFAULT_VALVE_MAINTENANCE_INTERVAL,
@@ -645,6 +651,9 @@ async def _async_setup_config(
     thermostat._valve_maintenance_interval = config.get(
         CONF_VALVE_MAINTENANCE_INTERVAL, DEFAULT_VALVE_MAINTENANCE_INTERVAL
     )
+    thermostat._valve_maintenance_open_minutes = config.get(
+        CONF_VALVE_MAINTENANCE_OPEN_MINUTES, DEFAULT_VALVE_MAINTENANCE_OPEN_MINUTES
+    )
     thermostat._valve_maintenance_entity = config.get(CONF_HEATER)
 
     async_add_entities([thermostat])
@@ -752,6 +761,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         self.features = feature_manager
 
         # valve maintenance (set by the platform setup helper)
+        self._valve_maintenance_open_minutes = DEFAULT_VALVE_MAINTENANCE_OPEN_MINUTES
         self._valve_maintenance_enabled = False
         self._valve_maintenance_interval = DEFAULT_VALVE_MAINTENANCE_INTERVAL
         self._valve_maintenance_entity = None
@@ -1074,9 +1084,9 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
                 self._valve_maintenance_entity,
                 self._valve_maintenance_interval,
                 self._set_valve_maintenance_active,
+                open_minutes=self._valve_maintenance_open_minutes,
             )
             self._valve_maintenance_manager.schedule_initial()
-            self.async_on_remove(self._valve_maintenance_manager.cancel)
 
         if self.openings.opening_entities:
             self.async_on_remove(
@@ -1235,6 +1245,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Call when entity will be removed from hass."""
+        if self._valve_maintenance_manager is not None:
+            await self._valve_maintenance_manager.cancel()
         heater = self._find_pwm_heater()
         if isinstance(heater, PredictiveHeaterDevice):
             await heater.async_shutdown()
@@ -1452,8 +1464,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         Works whether or not scheduled maintenance is enabled, as long as a
         heater switch is configured. A transient manager is used when scheduled
-        maintenance is off so the cycle still suspends control and restores the
-        prior switch state.
+        maintenance is off so removal also cancels the hold and closes the valve.
         """
         if not self._valve_maintenance_entity:
             _LOGGER.warning("Cannot run valve maintenance: no heater switch configured")
@@ -1466,7 +1477,9 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
                 self._valve_maintenance_entity,
                 self._valve_maintenance_interval,
                 self._set_valve_maintenance_active,
+                open_minutes=self._valve_maintenance_open_minutes,
             )
+            self._valve_maintenance_manager = manager
         await manager.async_run_cycle()
         self.async_write_ha_state()
 

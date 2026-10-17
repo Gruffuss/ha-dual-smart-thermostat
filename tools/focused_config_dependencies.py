@@ -124,6 +124,15 @@ HEATING_PARAMETERS = {
         ),
         "example": "heater_control_mode: predictive -> predictive_initial_k_loss: 2.0",
     },
+    "valve_maintenance_open_minutes": {
+        "required_parameter": "valve_maintenance",
+        "required_value": [True],
+        "description": (
+            "Valve maintenance open hold only applies when valve_maintenance is"
+            " enabled"
+        ),
+        "example": "valve_maintenance: true → valve_maintenance_open_minutes: 6",
+    },
     "valve_maintenance_interval": {
         "required_parameter": "valve_maintenance",
         "required_value": [True],

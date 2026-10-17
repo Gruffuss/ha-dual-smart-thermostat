@@ -289,10 +289,12 @@ predictive_initial_k_loss: 2.0
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `valve_maintenance_interval` | Days between maintenance cycles | `7` |
+| `valve_maintenance_open_minutes` | Idle valve open hold, 1-30 whole minutes | `6` |
 
 **Configuration Example**:
 ```yaml
 valve_maintenance: true
+valve_maintenance_open_minutes: 6  # Also applies to the manual service
 valve_maintenance_interval: 7  # ← Only applies when valve_maintenance is true
 ```
 

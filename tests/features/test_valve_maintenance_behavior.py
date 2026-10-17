@@ -1,12 +1,14 @@
-"""Behavioral tests for periodic valve maintenance (anti-stick)."""
+"""Behavioral tests for valve exercise holds and lifecycle."""
+
+import asyncio
+from datetime import timedelta
 
 from homeassistant.components.climate import HVACMode
-from homeassistant.const import SERVICE_TURN_OFF, SERVICE_TURN_ON
-from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
-from homeassistant.util.unit_system import METRIC_SYSTEM
 import pytest
+import voluptuous as vol
 
+from custom_components.dual_smart_thermostat.climate import PLATFORM_SCHEMA
 from custom_components.dual_smart_thermostat.const import DOMAIN
 from custom_components.dual_smart_thermostat.managers.valve_maintenance_manager import (
     ValveMaintenanceManager,
@@ -14,120 +16,74 @@ from custom_components.dual_smart_thermostat.managers.valve_maintenance_manager 
 from tests import common, setup_switch
 
 
-@pytest.fixture
-def expected_lingering_timers() -> bool:
-    """These tests set up via YAML platform config, so there is no config
-    entry to unload and the entity is never removed. The PWM/valve timers
-    are cancelled on entity removal (async_on_remove), which teardown here
-    never triggers - tell the harness the scheduled timer is expected.
-    """
-    return True
+async def flush():
+    for _ in range(30):
+        await asyncio.sleep(0)
+
+
+async def tick(hass, freezer, seconds):
+    freezer.tick(timedelta(seconds=seconds))
+    common.async_fire_time_changed(hass)
+    await flush()
 
 
 @pytest.mark.asyncio
-async def test_maintenance_cycle_pulses_and_restores(hass: HomeAssistant) -> None:
-    """A maintenance cycle pulses the switch on/off twice then restores off."""
-    calls = setup_switch(hass, False)  # switch starts off
-
-    suspends: list[bool] = []
-    manager = ValveMaintenanceManager(
-        hass,
-        common.ENT_SWITCH,
-        interval_days=7,
-        suspend_control=suspends.append,
-        segment_seconds=0,
-    )
-
-    await manager.async_run_cycle()
-    await hass.async_block_till_done()
-
-    services = [c.service for c in calls]
-    # 2 cycles of on/off, then restore (off because it started off).
-    assert services == [
-        SERVICE_TURN_ON,
-        SERVICE_TURN_OFF,
-        SERVICE_TURN_ON,
-        SERVICE_TURN_OFF,
-        SERVICE_TURN_OFF,
-    ]
-    # Control was suspended for the duration, then resumed.
-    assert suspends == [True, False]
-    assert manager.running is False
-
-
-@pytest.mark.asyncio
-async def test_maintenance_restores_prior_on_state(hass: HomeAssistant) -> None:
-    """If the switch was on, it is restored on after maintenance."""
-    calls = setup_switch(hass, True)  # switch starts on
-
-    manager = ValveMaintenanceManager(
-        hass,
-        common.ENT_SWITCH,
-        interval_days=7,
-        suspend_control=lambda _: None,
-        segment_seconds=0,
-    )
-
-    await manager.async_run_cycle()
-    await hass.async_block_till_done()
-
-    assert calls[-1].service == SERVICE_TURN_ON  # restored on
-
-
-@pytest.mark.asyncio
-async def test_maintenance_skips_unavailable_switch(hass: HomeAssistant) -> None:
-    """No actions when the switch entity is unavailable."""
-    from homeassistant.const import STATE_UNAVAILABLE
-
+@pytest.mark.parametrize("minutes", [None, 2])
+async def test_maintenance_holds_then_closes(hass, freezer, minutes):
+    """The configured hold defaults to six minutes and suspends all control."""
     calls = setup_switch(hass, False)
-    hass.states.async_set(common.ENT_SWITCH, STATE_UNAVAILABLE)
-    await hass.async_block_till_done()
-    calls.clear()
-
+    suspends = []
+    kwargs = {} if minutes is None else {"open_minutes": minutes}
     manager = ValveMaintenanceManager(
-        hass,
-        common.ENT_SWITCH,
-        interval_days=7,
-        suspend_control=lambda _: None,
-        segment_seconds=0,
+        hass, common.ENT_SWITCH, 7, suspends.append, **kwargs
     )
-    await manager.async_run_cycle()
-    await hass.async_block_till_done()
+    task = asyncio.create_task(manager.async_run_cycle())
+    await flush()
+    assert [c.service for c in calls] == ["turn_on"]
+    assert suspends == [True]
+    await tick(hass, freezer, (minutes or 6) * 60 - 1)
+    assert [c.service for c in calls] == ["turn_on"]
+    await tick(hass, freezer, 1)
+    await task
+    assert [c.service for c in calls] == ["turn_on", "turn_off"]
+    assert suspends == [True, False]
+    assert not manager.running
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["on", "unavailable", "unknown"])
+async def test_maintenance_skips_active_or_unavailable(hass, state):
+    """An active heating valve needs no exercise; unavailable valves cannot move."""
+    calls = setup_switch(hass, False)
+    hass.states.async_set(common.ENT_SWITCH, state)
+    manager = ValveMaintenanceManager(hass, common.ENT_SWITCH, 7, lambda _: None)
+    await manager.async_run_cycle()
     assert calls == []
 
 
 @pytest.mark.asyncio
-async def test_maintenance_enabled_creates_manager(hass: HomeAssistant) -> None:
-    """Enabling valve maintenance wires up a manager on the entity."""
-    setup_switch(hass, False)
-    hass.config.units = METRIC_SYSTEM
-    assert await async_setup_component(
-        hass,
-        "climate",
-        {
-            "climate": {
-                "platform": DOMAIN,
-                "name": "test",
-                "heater": common.ENT_SWITCH,
-                "target_sensor": common.ENT_SENSOR,
-                "valve_maintenance": True,
-                "valve_maintenance_interval": 5,
-                "initial_hvac_mode": HVACMode.HEAT,
-            }
-        },
-    )
-    await hass.async_block_till_done()
-
-    thermostat = hass.data["entity_components"]["climate"].get_entity("climate.test")
-    assert thermostat._valve_maintenance_manager is not None
+async def test_maintenance_cancel_closes_before_return(hass, freezer):
+    """Cancellation closes an opened valve and cancels the hold timer."""
+    calls = setup_switch(hass, False)
+    manager = ValveMaintenanceManager(hass, common.ENT_SWITCH, 7, lambda _: None)
+    task = asyncio.create_task(manager.async_run_cycle())
+    await flush()
+    await manager.cancel()
+    assert [c.service for c in calls] == ["turn_on", "turn_off"]
+    await tick(hass, freezer, 3600)
+    assert len(calls) == 2
+    assert task.done()
 
 
 @pytest.mark.asyncio
-async def test_run_valve_maintenance_service_on_demand(hass: HomeAssistant) -> None:
-    """The run_valve_maintenance service pulses the valve even when disabled."""
+@pytest.mark.parametrize(
+    "scheduled,remove", [(False, False), (False, True), (True, True)]
+)
+async def test_run_valve_maintenance_service_on_demand(
+    hass, freezer, scheduled, remove
+):
+    """Service honours the option and removal also cancels service-only holds."""
     calls = setup_switch(hass, False)
-    hass.config.units = METRIC_SYSTEM
     assert await async_setup_component(
         hass,
         "climate",
@@ -137,49 +93,50 @@ async def test_run_valve_maintenance_service_on_demand(hass: HomeAssistant) -> N
                 "name": "test",
                 "heater": common.ENT_SWITCH,
                 "target_sensor": common.ENT_SENSOR,
-                # scheduled maintenance intentionally left disabled
-                "initial_hvac_mode": HVACMode.HEAT,
+                "valve_maintenance_open_minutes": 2,
+                "valve_maintenance": scheduled,
+                "initial_hvac_mode": HVACMode.OFF,
             }
         },
     )
+    await flush()
     await hass.async_block_till_done()
-
     thermostat = hass.data["entity_components"]["climate"].get_entity("climate.test")
-    assert thermostat._valve_maintenance_manager is None  # not scheduled
-
-    # Speed up the transient cycle for the test.
-    import custom_components.dual_smart_thermostat.managers.valve_maintenance_manager as vm
-
-    orig_init = vm.ValveMaintenanceManager.__init__
-
-    def fast_init(self, hass_, entity_id, interval_days, suspend_control, **kwargs):
-        orig_init(
-            self,
-            hass_,
-            entity_id,
-            interval_days,
-            suspend_control,
-            segment_seconds=0,
-        )
-
-    vm.ValveMaintenanceManager.__init__ = fast_init
-    try:
-        calls.clear()
-        await hass.services.async_call(
+    calls.clear()
+    task = asyncio.create_task(
+        hass.services.async_call(
             DOMAIN,
             "run_valve_maintenance",
             {"entity_id": "climate.test"},
             blocking=True,
         )
-        await hass.async_block_till_done()
-    finally:
-        vm.ValveMaintenanceManager.__init__ = orig_init
+    )
+    await flush()
+    assert [c.service for c in calls] == ["turn_on"]
+    await tick(hass, freezer, 60)
+    assert len(calls) == 1
+    if remove:
+        await thermostat.async_remove()
+    else:
+        await tick(hass, freezer, 60)
+    await flush()
+    assert [c.service for c in calls] == ["turn_on", "turn_off"]
+    await tick(hass, freezer, 600)
+    assert len(calls) == 2
+    assert task.done()
+    if not remove:
+        await thermostat.async_remove()
 
-    services = [c.service for c in calls]
-    assert services == [
-        SERVICE_TURN_ON,
-        SERVICE_TURN_OFF,
-        SERVICE_TURN_ON,
-        SERVICE_TURN_OFF,
-        SERVICE_TURN_OFF,
-    ]
+
+@pytest.mark.parametrize("value", [0, 31, 1.5])
+def test_maintenance_yaml_rejects_invalid_hold(value):
+    """YAML uses integer 1-30 minute bounds."""
+    with pytest.raises(vol.Invalid):
+        PLATFORM_SCHEMA(
+            {
+                "platform": DOMAIN,
+                "heater": common.ENT_SWITCH,
+                "target_sensor": common.ENT_SENSOR,
+                "valve_maintenance_open_minutes": value,
+            }
+        )

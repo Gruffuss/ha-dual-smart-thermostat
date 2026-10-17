@@ -74,6 +74,7 @@ class ConfigValidator:
             "predictive_kp": ("heater_control_mode", ["predictive"]),
             "predictive_ki": ("heater_control_mode", ["predictive"]),
             "predictive_initial_k_loss": ("heater_control_mode", ["predictive"]),
+            "valve_maintenance_open_minutes": ("valve_maintenance", [True]),
             "valve_maintenance_interval": ("valve_maintenance", [True]),
         }
 
