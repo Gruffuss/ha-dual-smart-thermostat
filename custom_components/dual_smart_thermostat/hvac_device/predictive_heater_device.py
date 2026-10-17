@@ -59,6 +59,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
         )
         self._settings = settings
         self._store_key = store_key
+        self._sensor_key = store_key
         self._ctl = PredictiveController(settings)
         self._origin = dt_util.utcnow()
         self._clock_origin = time.monotonic()
@@ -96,6 +97,10 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
     def set_sibling_cooler(self, device):
         """Use the configured cooler for AC validity; never interlock its output."""
         self._sibling_cooler = device
+
+    def set_sensor_key(self, sensor_key):
+        """Keep entity identity separate from the path-safe storage key."""
+        self._sensor_key = sensor_key
 
     def set_temperature_fault_checker(self, checker):
         self._temperature_fault = checker
@@ -206,6 +211,8 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
         except Exception as exc:  # noqa: BLE001
             _LOGGER.warning("Cannot load predictive state; starting fresh: %s", exc)
             data = None
+        if self._removed:
+            return
         self._origin = self._last_tick = dt_util.utcnow()
         self._clock_origin = time.monotonic()
         if data is not None:
@@ -368,7 +375,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
                 for k, v in values.items()
             }
             async_dispatcher_send(
-                self.hass, SET_PREDICTIVE_SENSOR_SIGNAL.format(self._store_key), values
+                self.hass, SET_PREDICTIVE_SENSOR_SIGNAL.format(self._sensor_key), values
             )
             if self._async_write_ha_state_cb:
                 self._async_write_ha_state_cb()

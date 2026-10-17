@@ -62,6 +62,7 @@ from homeassistant.helpers.reload import async_setup_reload_service
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.service import extract_entity_ids
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.util import slugify
 from homeassistant.util.unit_conversion import TemperatureConverter
 import voluptuous as vol
 
@@ -417,7 +418,11 @@ async def async_setup_platform(
 
     await async_setup_reload_service(hass, DOMAIN, PLATFORMS)
     sensor_key = await _async_setup_config(
-        hass, config, config.get(CONF_UNIQUE_ID), async_add_entities
+        hass,
+        config,
+        config.get(CONF_UNIQUE_ID),
+        async_add_entities,
+        store_key=slugify(config.get(CONF_UNIQUE_ID) or config[CONF_NAME]),
     )
 
     # UI config entries register the companion sensor via
@@ -516,6 +521,8 @@ async def _async_setup_config(
     config: dict[str, Any],
     unique_id: str | None,
     async_add_entities: AddEntitiesCallback,
+    *,
+    store_key: str | None = None,
 ) -> str:
     """Set up the smart dual thermostat platform. Returns the sensor_key."""
 
@@ -571,7 +578,7 @@ async def _async_setup_config(
     preset_action_manager = PresetActionManager(hass, feature_manager)
 
     device_factory = HVACDeviceFactory(
-        hass, config, feature_manager, store_key=unique_id or name
+        hass, config, feature_manager, store_key=store_key or unique_id or name
     )
 
     hvac_device = device_factory.create_device(
@@ -606,6 +613,7 @@ async def _async_setup_config(
     thermostat._action_reason_sensor_key = sensor_key
     predictive = thermostat._find_pwm_heater()
     if isinstance(predictive, PredictiveHeaterDevice):
+        predictive.set_sensor_key(sensor_key)
         predictive.set_temperature_fault_checker(
             lambda: thermostat._sensor_stalled
             or (state := hass.states.get(sensor_entity_id)) is None

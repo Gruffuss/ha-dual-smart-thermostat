@@ -1,11 +1,13 @@
 """Home Assistant integration tests for predictive heating."""
 
+import asyncio
 from datetime import timedelta
 import json
 import math
 from unittest.mock import patch
 
 from homeassistant.components.climate import HVACMode
+from homeassistant.core import State
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store, UnsupportedStorageVersionError
@@ -13,7 +15,10 @@ from homeassistant.setup import async_setup_component
 import homeassistant.util.dt as dt_util
 from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    mock_restore_cache_with_extra_data,
+)
 import voluptuous as vol
 
 from custom_components.dual_smart_thermostat.const import DOMAIN
@@ -919,4 +924,113 @@ async def test_cold_floor_preserves_cooler_minimum_cycle(hass, freezer):
     assert any(
         c.service == "turn_off" and c.data["entity_id"] == common.ENT_COOLER
         for c in calls
+    )
+
+
+@pytest.mark.asyncio
+async def test_removal_during_store_load_registers_no_callbacks(hass):
+    await _setup(hass, extra={"openings": ["binary_sensor.window"]})
+    heater = _heater(hass)
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def load():
+        entered.set()
+        await release.wait()
+        return None
+
+    with patch.object(heater._store, "async_load", load):
+        startup = hass.async_create_task(heater.async_on_startup())
+        await entered.wait()
+        await _climate(hass).async_remove()
+        with (
+            patch(
+                "custom_components.dual_smart_thermostat.hvac_device.predictive_heater_device.async_track_time_interval"
+            ) as timer,
+            patch(
+                "custom_components.dual_smart_thermostat.hvac_device.predictive_heater_device.async_track_state_change_event"
+            ) as listener,
+        ):
+            release.set()
+            await startup
+            timer.assert_not_called()
+            listener.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unique_id", [None, "Zone/One Thermostat"])
+async def test_yaml_store_key_is_path_safe(hass, freezer, hass_storage, unique_id):
+    extra = {"name": "Kitchen/Living Room"}
+    if unique_id:
+        extra["unique_id"] = unique_id
+    await _setup(hass, extra=extra)
+    climate = hass.data["entity_components"]["climate"].get_entity(
+        "climate.kitchen_living_room"
+    )
+    heater = climate._find_pwm_heater()
+    key = "zone_one_thermostat" if unique_id else "kitchen_living_room"
+    assert heater._store.key == f"{DOMAIN}.predictive.{key}"
+    await _tick(hass, freezer)
+    registry = er.async_get(hass)
+    sensor = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{unique_id or extra['name']}_predictive_slab"
+    )
+    assert hass.states.get(sensor).state != "unknown"
+    await heater.async_save()
+    assert heater._store.key in hass_storage
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("units", "display"), [(METRIC_SYSTEM, "25.0"), (US_CUSTOMARY_SYSTEM, "77.0")]
+)
+async def test_predictive_sensor_restores_native_value_before_first_tick(
+    hass, units, display
+):
+    mock_restore_cache_with_extra_data(
+        hass,
+        [
+            (
+                State("sensor.test_predictive_forecast_30", display),
+                {"native_value": 25.0, "native_unit_of_measurement": "°C"},
+            )
+        ],
+    )
+    await _setup(hass, units=units)
+    assert hass.states.get("sensor.test_predictive_forecast_30").state == display
+
+
+@pytest.mark.asyncio
+async def test_switching_from_predictive_removes_sensor_registry_entries(hass, freezer):
+    setup_switch(hass, False)
+    setup_sensor(hass, 21)
+    hass.states.async_set("sensor.outdoor", "5")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "name": "test",
+            "heater": common.ENT_SWITCH,
+            "target_sensor": common.ENT_SENSOR,
+            "outside_sensor": "sensor.outdoor",
+            "heater_control_mode": "predictive",
+            "pwm_cycle_duration": 1800,
+            "min_cycle_duration": {"minutes": 10},
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    registry = er.async_get(hass)
+    ids = [f"{entry.entry_id}_predictive_{key}" for key in PREDICTIVE_KEYS]
+    assert all(registry.async_get_entity_id("sensor", DOMAIN, key) for key in ids)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, "heater_control_mode": "tpi"}
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert all(
+        registry.async_get_entity_id("sensor", DOMAIN, key) is None for key in ids
+    )
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_hvac_action_reason"
     )

@@ -10,8 +10,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import timedelta
 import logging
+import math
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
@@ -19,6 +21,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -28,6 +31,7 @@ import homeassistant.util.dt as dt_util
 
 from .const import (
     CONF_HEATER_CONTROL_MODE,
+    DOMAIN,
     SET_HVAC_ACTION_REASON_SENSOR_SIGNAL,
     SET_PREDICTIVE_SENSOR_SIGNAL,
     HeaterControlMode,
@@ -69,7 +73,7 @@ PREDICTIVE_SENSOR_KEYS = (
 )
 
 
-class PredictiveSensor(SensorEntity):
+class PredictiveSensor(RestoreSensor):
     """One diagnostic value from the heater's isolated minute publication."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -96,6 +100,14 @@ class PredictiveSensor(SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        last = await self.async_get_last_sensor_data()
+        if last is not None:
+            value = last.native_value
+            if self._key == "mode":
+                if value in self._attr_options:
+                    self._attr_native_value = value
+            elif isinstance(value, (int, float)) and math.isfinite(value):
+                self._attr_native_value = value
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
@@ -214,10 +226,18 @@ async def async_setup_entry(  # NOSONAR python:S7503 - HA platform API
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Create the companion action-reason sensor for a config entry."""
-    del hass  # HA passes hass positionally but this platform doesn't need it
     config = {**config_entry.data, **config_entry.options}
     name = config.get(CONF_NAME, "dual_smart_thermostat")
     sensor_key = config_entry.entry_id
+
+    if config.get(CONF_HEATER_CONTROL_MODE) != HeaterControlMode.PREDICTIVE:
+        registry = er.async_get(hass)
+        for key in PREDICTIVE_SENSOR_KEYS:
+            entity_id = registry.async_get_entity_id(
+                "sensor", DOMAIN, f"{sensor_key}_predictive_{key}"
+            )
+            if entity_id is not None:
+                registry.async_remove(entity_id)
 
     async_add_entities(_sensors(sensor_key, name, config))
 
