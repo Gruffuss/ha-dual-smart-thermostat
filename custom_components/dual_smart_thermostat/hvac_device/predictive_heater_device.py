@@ -161,6 +161,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
                 getattr(self.environment, self.target_env_attr, None)
             ),
             demand=self.hvac_mode == HVACMode.HEAT
+            and not self.environment.humidity_sensor_stalled
             and not self._maintenance
             and not self._cooler_selected
             and not self.openings.any_opening_open(self.hvac_mode)

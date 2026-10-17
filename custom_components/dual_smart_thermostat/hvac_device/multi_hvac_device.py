@@ -8,6 +8,7 @@ from ..hvac_action_reason.hvac_action_reason import HVACActionReason
 from ..hvac_device.controllable_hvac_device import ControlableHVACDevice
 from ..hvac_device.hvac_device import HVACDevice
 from ..hvac_device.predictive_heater_device import PredictiveHeaterDevice
+from ..hvac_device.pwm_heater_device import PwmHeaterDevice
 from ..managers.environment_manager import EnvironmentManager
 from ..managers.feature_manager import FeatureManager
 from ..managers.opening_manager import OpeningManager
@@ -214,7 +215,11 @@ class MultiHvacDevice(HVACDevice, ControlableHVACDevice):
 
     async def async_turn_off_all(self, time):
         for device in self.hvac_devices:
-            if device.is_active or time is not None:
+            if (
+                isinstance(device, (PwmHeaterDevice, MultiHvacDevice))
+                or device.is_active
+                or time is not None
+            ):
                 await device.async_turn_off()
 
     async def _async_check_device_initial_state(self) -> None:

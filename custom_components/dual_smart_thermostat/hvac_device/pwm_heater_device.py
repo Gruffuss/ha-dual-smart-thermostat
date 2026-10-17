@@ -58,7 +58,7 @@ class PwmHeaterDevice(HeaterDevice):
             min_cycle_duration,
             self._compute_duty,
             self.async_turn_on,
-            self.async_turn_off,
+            super().async_turn_off,
             lambda: self.is_active,
         )
         # Ensure PWM timers are cancelled when the entity is removed.
@@ -68,6 +68,11 @@ class PwmHeaterDevice(HeaterDevice):
     def duty_cycle(self) -> float | None:
         """Last computed duty cycle percentage (None when not running)."""
         return self._pwm.last_duty
+
+    async def async_turn_off(self):
+        """An external off request cancels future PWM switching as well."""
+        self._pwm.cancel()
+        await super().async_turn_off()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         """Set the mode, stopping the PWM cycle when turning off.
@@ -98,6 +103,11 @@ class PwmHeaterDevice(HeaterDevice):
     async def async_control_hvac(self, time=None, force=False):
         """Run proportional control, applying mode/opening/floor overrides."""
         self._set_self_active()
+
+        if self.environment.humidity_sensor_stalled:
+            await self._pwm.async_stop()
+            self._hvac_action_reason = HVACActionReason.HUMIDITY_SENSOR_STALLED
+            return
 
         if self._hvac_mode == HVACMode.OFF:
             await self._pwm.async_stop()
@@ -153,7 +163,7 @@ class PwmHeaterDevice(HeaterDevice):
             if planned_on:
                 await self.async_turn_on()
             else:
-                await self.async_turn_off()
+                await super().async_turn_off()
 
         duty = self._pwm.last_duty
         if duty is not None and duty <= 0.0:

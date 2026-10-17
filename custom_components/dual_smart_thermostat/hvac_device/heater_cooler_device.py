@@ -8,6 +8,7 @@ from ..hvac_action_reason.hvac_action_reason import HVACActionReason
 from ..hvac_device.hvac_device import merge_hvac_modes
 from ..hvac_device.multi_hvac_device import MultiHvacDevice
 from ..hvac_device.predictive_heater_device import PredictiveHeaterDevice
+from ..hvac_device.pwm_heater_device import PwmHeaterDevice
 from ..managers.environment_manager import EnvironmentManager
 from ..managers.feature_manager import FeatureManager
 from ..managers.opening_manager import OpeningManager
@@ -190,7 +191,12 @@ class HeaterCoolerDevice(MultiHvacDevice):
             await self.cooler_device.async_control_hvac(time, force)
             self._hvac_action_reason = self.cooler_device.HVACActionReason
         else:
-            if self.cooler_device.is_active:
+            if self.cooler_device.is_active and (
+                not self.environment.is_floor_cold
+                or blocked
+                or not self.cooler_device.hvac_controller.min_cycle_duration
+                or self.cooler_device.hvac_controller.ran_long_enough()
+            ):
                 await self.cooler_device.async_turn_off()
             self._hvac_action_reason = heater.HVACActionReason
 
@@ -211,6 +217,8 @@ class HeaterCoolerDevice(MultiHvacDevice):
                 await self.heater_device.async_control_hvac(time, force)
                 self._hvac_action_reason = self.heater_device.HVACActionReason
             case ToleranceDevice.COOLER:
+                if isinstance(self.heater_device, PwmHeaterDevice):
+                    await self.heater_device.async_turn_off()
                 await self.cooler_device.async_control_hvac(time, force)
                 self._hvac_action_reason = self.cooler_device.HVACActionReason
             case _:
@@ -230,7 +238,10 @@ class HeaterCoolerDevice(MultiHvacDevice):
         elif too_hot:
             await self.cooler_device.async_control_hvac(time, force)
             self._hvac_action_reason = self.cooler_device.HVACActionReason
-            if self.heater_device.is_active:
+            if (
+                isinstance(self.heater_device, PwmHeaterDevice)
+                or self.heater_device.is_active
+            ):
                 await self.heater_device.async_turn_off()
         else:
             await self.async_turn_off_all(time)

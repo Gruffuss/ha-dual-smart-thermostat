@@ -1374,19 +1374,17 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
     def _find_pwm_heater(self) -> PwmHeaterDevice | None:
         """Locate the PWM/AI heater device within the device tree, if any."""
-        device = self.hvac_device
-        if isinstance(device, PwmHeaterDevice):
-            return device
-        heater = getattr(device, "heater_device", None)
-        if isinstance(heater, PwmHeaterDevice):
-            return heater
-        for sub in getattr(device, "hvac_devices", []) or []:
-            if isinstance(sub, PwmHeaterDevice):
-                return sub
-            sub_heater = getattr(sub, "heater_device", None)
-            if isinstance(sub_heater, PwmHeaterDevice):
-                return sub_heater
-        return None
+        return next(self._pwm_heaters(), None)
+
+    def _pwm_heaters(self):
+        """Visit PWM heaters throughout nested device composites."""
+        pending = [self.hvac_device]
+        while pending:
+            device = pending.pop()
+            if isinstance(device, PwmHeaterDevice):
+                yield device
+            else:
+                pending.extend(reversed(getattr(device, "hvac_devices", []) or []))
 
     def _restore_ai_learning(self, old_state) -> None:
         """Restore AI Time Based learned values from a persisted state."""
@@ -1828,12 +1826,15 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             "HUmidity sensor has not been updated for %s",
             now - state.last_updated if now and state else "---",
         )
-        if self._is_device_active:
+        if self._is_device_active or any(
+            heater._pwm.running for heater in self._pwm_heaters()
+        ):
             _LOGGER.warning(
                 "Climate (%s) - humidity sensor (%s) is stalled, call the emergency stop",
                 self.unique_id,
                 self.sensor_entity_id,
             )
+            self.environment.humidity_sensor_stalled = True
             await self.hvac_device.async_turn_off()
             self._hvac_action_reason = HVACActionReason.HUMIDITY_SENSOR_STALLED
             self._publish_hvac_action_reason(self._hvac_action_reason)

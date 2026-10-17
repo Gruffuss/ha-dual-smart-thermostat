@@ -809,3 +809,114 @@ async def test_valve_open_state_is_used_for_learning(hass, freezer):
     await _setup(hass, temperature=20, extra={"heater": common.ENT_VALVE})
     await _tick(hass, freezer)
     assert _heater(hass)._ctl._last_inputs.valve_on
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("control_mode", ["predictive", "ai", "tpi"])
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize("valve_state", ["on", "off"])
+async def test_humidity_emergency_stops_pwm_until_recovery(
+    hass, freezer, control_mode, nested, valve_state
+):
+    extra = {
+        "heater_control_mode": control_mode,
+        "humidity_sensor": "sensor.humidity",
+        "sensor_stale_duration": {"hours": 2},
+    }
+    hass.states.async_set("sensor.humidity", "50")
+    if nested:
+        extra.update({"cooler": common.ENT_COOLER, "dryer": "switch.dryer"})
+        hass.states.async_set(common.ENT_COOLER, "off")
+        hass.states.async_set("switch.dryer", "off")
+    calls = await _setup(hass, temperature=19, extra=extra)
+    heater = _heater(hass)
+    assert heater._pwm.running
+    hass.states.async_set(common.ENT_SWITCH, valve_state)
+    await hass.async_block_till_done()
+    await _climate(hass)._async_humidity_sensor_not_responding()
+    assert not heater._pwm.running
+    hass.states.async_set(common.ENT_SWITCH, "off")
+    await hass.async_block_till_done()
+    calls.clear()
+    await _tick(hass, freezer, 31)
+    assert not [
+        c
+        for c in calls
+        if c.service == "turn_on" and c.data["entity_id"] == common.ENT_SWITCH
+    ]
+    hass.states.async_set("sensor.humidity", "51")
+    await hass.async_block_till_done()
+    assert heater._pwm.running
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("control_mode", ["ai", "tpi"])
+@pytest.mark.parametrize("selection", ["band", "cooler", "off"])
+async def test_heat_cool_deselection_stops_non_predictive_pwm(
+    hass, freezer, control_mode, selection
+):
+    hass.states.async_set(common.ENT_COOLER, "off")
+    calls = await _setup(
+        hass,
+        temperature=19,
+        extra={
+            "heater_control_mode": control_mode,
+            "cooler": common.ENT_COOLER,
+            "heat_cool_mode": True,
+            "target_temp_low": 21,
+            "target_temp_high": 25,
+        },
+    )
+    await _climate(hass).async_set_hvac_mode(HVACMode.HEAT_COOL)
+    heater = _heater(hass)
+    assert heater._pwm.running
+    # During the off segment neither switch is active, but a future boundary exists.
+    hass.states.async_set(common.ENT_SWITCH, "off")
+    if selection == "off":
+        await _climate(hass).async_set_hvac_mode(HVACMode.OFF)
+    else:
+        setup_sensor(hass, 23 if selection == "band" else 27)
+        await hass.async_block_till_done()
+    assert not heater._pwm.running
+    calls.clear()
+    await _tick(hass, freezer, 31)
+    assert not [
+        c
+        for c in calls
+        if c.service == "turn_on" and c.data["entity_id"] == common.ENT_SWITCH
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cold_floor_preserves_cooler_minimum_cycle(hass, freezer):
+    hass.states.async_set(common.ENT_COOLER, "off")
+    hass.states.async_set("sensor.floor", "22")
+    calls = await _setup(
+        hass,
+        temperature=27,
+        extra={
+            "cooler": common.ENT_COOLER,
+            "heat_cool_mode": True,
+            "target_temp_low": 21,
+            "target_temp_high": 25,
+            "initial_hvac_mode": HVACMode.HEAT_COOL,
+            "floor_sensor": "sensor.floor",
+            "min_floor_temp": 20,
+        },
+    )
+    hass.states.async_set(common.ENT_COOLER, "on")
+    await hass.async_block_till_done()
+    calls.clear()
+    hass.states.async_set("sensor.floor", "18")
+    await hass.async_block_till_done()
+    assert not [
+        c
+        for c in calls
+        if c.service == "turn_off" and c.data["entity_id"] == common.ENT_COOLER
+    ]
+    await _tick(hass, freezer, 11)
+    await _climate(hass)._async_control_climate()
+    assert any(
+        c.service == "turn_off" and c.data["entity_id"] == common.ENT_COOLER
+        for c in calls
+    )
