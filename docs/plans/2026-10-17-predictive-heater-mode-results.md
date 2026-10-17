@@ -6,6 +6,15 @@ the fixture and the margin unchanged.
 
 ## Outcome
 
+> **Superseded by the owner's decisions of 2026-10-17.** The gate's persistence demotion is
+> dropped, the acceptance is now the mean over seeds 0-31, and plan_pwm's float collapse is fixed.
+> The acceptance passes. See "Owner decisions and the runs after them" at the end. This section
+> records the state before those decisions: v5's gate and the old plan_pwm comparison. The tool
+> now reproduces that baseline as `x_pre_fix_pwm+v5gate` (3676 / 1307). The other earlier
+> variants, run today with `+v5gate`, include the plan_pwm fix. The `+v5` rows reproduce
+> unchanged, since min off 0 is untouched by that fix. The earlier "exact PWM" rows are the fix
+> itself.
+
 - **The margin is not met by any change that keeps the binding constraints.** No production code is
   changed. The acceptance still fails by 12 minutes (1307 vs 1295 minutes below 20.3).
 - **Measured cause:** the gate's demotion clause `mae120 > persistence_mae120`.
@@ -270,3 +279,75 @@ handover change helps:
    - Charging the full cycle makes PI much colder in this fixture: mean 2005 against 1374 minutes
      below 20.3 over 256 seeds. So which accounting is wanted is a design choice.
    - Port only: v5 has no minimum off.
+
+## Owner decisions and the runs after them (2026-10-17)
+
+**Decisions** (owner, relayed by the coordinator):
+1. **Production drops the persistence demotion.** Predictive demotes only when mae120 > mae_off;
+   promotion is unchanged.
+   - `PredictiveSettings.persistence_demotion` (default False) is internal, not a config option.
+   - The two v5-equivalence tests set it True and still match v5's published numbers to 1e-6.
+2. **The acceptance is the same fixture and margin, on the mean over seeds 0-31** of the per-seed
+   differences auto − PI:
+   - the mean difference in minutes below 20.7 and below 20.3 is each ≤ 60;
+   - min T: mean difference ≥ −0.1;
+   - overshoot: mean difference ≤ 0.3.
+
+   It keeps the production actuator (min_on = min_off = 10). Seed 42 is now printed only.
+3. **plan_pwm's float collapse is fixed** at the comparison: a segment is shorter than its minimum
+   only by more than 1 µs.
+   - Addition (mine): plan_pwm takes an optional separate `min_off_seconds`, so the loss learner
+     and the test Driver use its comparison instead of copies of it. Without that, the fixture's
+     actuator would have kept the collapse.
+4. **The duty bank versus min-off accounting is left as is.**
+
+**Commits on predictive/task2b-coldtime:**
+- 45de059: plan() no longer counts a minute or drops a pending cold floor (review HIGH 1 and
+  MEDIUM 3, same branch).
+- 7c775ee: the gate.
+- ae0fd3e: the multi-seed acceptance.
+- f05d72c: plan_pwm.
+
+**The 32-seed acceptance, production gate, production actuator** (mean over seeds 0-31; standard
+error in brackets; from the test's print, and the tool's sweep for the errors):
+
+| run | PI < 20.7 | auto < 20.7 | auto − PI < 20.7 | PI < 20.3 | auto < 20.3 | auto − PI < 20.3 | auto − PI min T | auto − PI overshoot | seeds meeting the per-seed margin |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| before the plan_pwm fix (`x_pre_fix_pwm`) | 3605.9 | 2999.9 | −606.0 (46.6) | 1411.6 | 1114.1 | −297.5 (29.0) | −0.0021 | −0.0114 | 31/32 (seed 24 fails) |
+| after the plan_pwm fix (`baseline`) | 3605.9 | 3095.8 | −510.1 (41.4) | 1411.6 | 1120.6 | −291.0 (25.3) | +0.0000 | −0.0150 | 31/32 (seed 24 fails) |
+| for comparison: v5's gate, before the fix (`x_pre_fix_pwm+v5gate`) | 3605.9 | 3596.9 | −9.0 (19.1) | 1411.6 | 1406.3 | −5.2 (28.5) | −0.0013 | −0.0062 | 16/32 |
+| for comparison: v5's gate, after the fix (`baseline+v5gate`) | 3605.9 | 3562.7 | −43.2 (16.8) | 1411.6 | 1390.4 | −21.2 (28.6) | −0.0041 | −0.0149 | 20/32 |
+
+Means of PI and auto min T after the fix: 19.913255 and 19.913258. Overshoot: 0.510929 and
+0.495889.
+
+Seed 24 after the fix: auto 1251 against PI 1165 minutes below 20.3. With v5's gate the means
+also meet the margin, so the multi-seed acceptance alone does not guard the gate. That is
+`test_production_gate_never_demotes_on_persistence`'s job.
+
+**Seed 42 (diagnostic only):**
+
+| run | PI < 20.7 / < 20.3 | auto < 20.7 / < 20.3 | auto transitions |
+|---|---|---|---|
+| production gate, before the plan_pwm fix | 3628 / 1235 | 2787 / 981 | 10080 predictive |
+| production gate, after the fix | 3628 / 1235 | 3296 / 1196 | 10080 predictive; 12584 fallback (cold-room floor) |
+
+After the fix, seed 42's predictive span ends at 12584 by the cold-room floor: a single reading
+of 20.4. The true temperature was 20.534 then and never below 20.5 in that span.
+
+**What moved with the plan_pwm fix** (all 72 closed-loop runs, before against after):
+- **Unchanged (38 runs):** every PI run, and every min-off-0 run. The latter are both
+  v5-equivalence tests, PI and auto.
+- **Changed:** the production-actuator predictive runs. These are the 33 solar auto runs (seeds
+  0-31 and 42) and the non-solar gate-"on" run of `test_predictive_closed_loop_limits` and
+  `test_predictive_tracks_better_than_pi`:
+  - overshoot 0.0678 → 0.0209;
+  - last-day MAE 0.0244 → 0.0377;
+  - valve-on minutes 3559 → 3551.
+
+  Both of those tests still pass.
+- **Outside the closed loop:** no existing test changed outcome, TPI and AI included. I did
+  not compare the internal values of tests that only assert.
+
+**Full suite:** 1720 passed, 2 skipped, exit 0, in 71 s (42.9 s before). The 32-seed acceptance
+takes 28.8 s of that.
