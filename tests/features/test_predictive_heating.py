@@ -936,7 +936,6 @@ async def test_removal_during_store_load_registers_no_callbacks(hass):
     async def load():
         entered.set()
         await release.wait()
-        return None
 
     with patch.object(heater._store, "async_load", load):
         startup = hass.async_create_task(heater.async_on_startup())

@@ -4,8 +4,8 @@ This module validates the complete lifecycle for simple_heater systems:
 1. User completes config flow with initial settings
 2. User opens options flow and sees the correct values pre-filled
 3. User changes some settings in options flow
-4. Changes persist correctly (in entry.options)
-5. Original values are preserved (in entry.data)
+4. Changes persist in both entry.data and entry.options
+5. Unchanged settings are retained while edited values are replaced
 6. Reopening options flow shows the updated values
 
 Test Coverage:
@@ -328,7 +328,7 @@ async def test_simple_heater_all_features_persistence(hass):
     - All 3 features configured in config flow (floor_heating, openings, presets)
     - All settings pre-filled in options flow
     - Changes to multiple features persist correctly
-    - Original entry.data preserved, changes in entry.options
+    - Changed settings are written to both entry.data and entry.options
 
     Available features for simple_heater:
     - floor_heating ✅

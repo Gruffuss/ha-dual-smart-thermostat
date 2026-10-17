@@ -4,8 +4,8 @@ This module validates the complete lifecycle for heater_cooler systems:
 1. User completes config flow with initial settings
 2. User opens options flow and sees the correct values pre-filled
 3. User changes some settings in options flow
-4. Changes persist correctly (in entry.options)
-5. Original values are preserved (in entry.data)
+4. Changes persist in both entry.data and entry.options
+5. Unchanged settings are retained while edited values are replaced
 6. Reopening options flow shows the updated values
 
 Test Coverage:
@@ -406,7 +406,7 @@ async def test_heater_cooler_all_features_full_persistence(hass):
     - All 5 features configured in config flow
     - All settings pre-filled in options flow
     - Changes to multiple features persist correctly
-    - Original entry.data preserved, changes in entry.options
+    - Changed settings are written to both entry.data and entry.options
     """
     from custom_components.dual_smart_thermostat.config_flow import ConfigFlowHandler
     from custom_components.dual_smart_thermostat.options_flow import OptionsFlowHandler

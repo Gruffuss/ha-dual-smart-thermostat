@@ -9,7 +9,8 @@ Each variant changes one thing, by patching the pure control code in this
 process only; the oracles are test-only and need no production change. A
 "+v5" suffix selects v5's actuator (min_off 0) and v5's gate (it also
 demotes on persistence), "+v5gate" v5's gate alone. ``--seeds`` reruns the
-fixture with other noise seeds as a diagnostic; the acceptance test keeps 42.
+fixture with other noise seeds as a diagnostic; acceptance uses 32 seeds
+(0-31), with the margin applied to the mean of auto minus PI.
 
 Run from the repository root with PYTHONPATH set to it:
     python tools/predictive_coldtime.py [variant ...]

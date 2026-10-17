@@ -18,7 +18,7 @@ These tests use a mix of mock fixtures for isolated testing and real
 Home Assistant fixtures for runtime behavior validation.
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import FlowResult
@@ -50,7 +50,7 @@ def hass_mock():
     """Create a mock hass instance for isolated testing."""
     hass = Mock()
     hass.config_entries = Mock()
-    hass.config_entries.async_update_entry = AsyncMock()
+    hass.config_entries.async_update_entry = MagicMock()
     return hass
 
 
@@ -352,7 +352,7 @@ if __name__ == "__main__":
         # Create mock objects
         hass = Mock()
         hass.config_entries = Mock()
-        hass.config_entries.async_update_entry = AsyncMock()
+        hass.config_entries.async_update_entry = MagicMock()
 
         config_entry = Mock()
         config_entry.data = {

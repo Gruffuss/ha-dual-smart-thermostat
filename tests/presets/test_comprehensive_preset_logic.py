@@ -15,7 +15,7 @@ async def test_comprehensive_preset_logic():
     print("=" * 50)
 
     try:
-        from unittest.mock import AsyncMock, Mock
+        from unittest.mock import AsyncMock, MagicMock, Mock
 
         from homeassistant.config_entries import ConfigEntry
         from homeassistant.const import CONF_NAME
@@ -104,6 +104,7 @@ async def test_comprehensive_preset_logic():
         options_handler = OptionsFlowHandler(mock_config_entry)
         options_handler.collected_config = {"presets_shown": True}
         options_handler.hass = AsyncMock()
+        options_handler.hass.config_entries.async_update_entry = MagicMock()
 
         result = await options_handler.async_step_preset_selection(no_presets_input)
 
@@ -235,6 +236,7 @@ async def test_comprehensive_preset_logic():
         ac_options_handler = OptionsFlowHandler(ac_config_entry)
         ac_options_handler.collected_config = {}
         ac_options_handler.hass = AsyncMock()
+        ac_options_handler.hass.config_entries.async_update_entry = MagicMock()
 
         # Simulate user checking presets in AC system options flow
         user_preset_selection = {"presets": ["away", "home", "comfort"]}

@@ -13,7 +13,7 @@ The simplified options flow shows runtime tuning parameters first,
 then proceeds to configuration steps for already-configured features.
 """
 
-from unittest.mock import AsyncMock, Mock, PropertyMock, patch
+from unittest.mock import MagicMock, Mock, PropertyMock, patch
 
 from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import FlowResultType
@@ -57,7 +57,7 @@ def mock_hass():
     """Create a mock hass instance."""
     hass = Mock()
     hass.config_entries = Mock()
-    hass.config_entries.async_update_entry = AsyncMock()
+    hass.config_entries.async_update_entry = MagicMock()
     hass.config_entries.async_entries = Mock(return_value=[])
     hass.data = {DOMAIN: {}}
     return hass
