@@ -33,7 +33,10 @@
             "same_heater_sensor": "Heater and temperature sensor cannot be the same entity",
             "same_heater_cooler": "Heater and cooler cannot be the same entity",
             "aux_heater_timeout_required": "Auxiliary heater timeout is required when auxiliary heater is configured",
-            "aux_heater_entity_required": "Auxiliary heater entity is required when timeout is configured"
+            "aux_heater_entity_required": "Auxiliary heater entity is required when timeout is configured",
+            "predictive_requires_outside_sensor": "Predictive control requires an outdoor temperature sensor. Select one in Advanced Settings.",
+            "predictive_cycle_whole_minutes": "For Predictive control, PWM cycle duration must be positive and a multiple of 60 seconds.",
+            "predictive_cycle_too_short": "For Predictive control, PWM cycle duration must be at least three times the minimum cycle duration."
         },
         "step": {
             "user": {
@@ -91,19 +94,35 @@
                             "tpi_coef_ext": "TPI external coefficient",
                             "ai_initial_heating_power": "AI initial heating power",
                             "valve_maintenance": "Valve maintenance (anti-stick)",
-                            "valve_maintenance_interval": "Valve maintenance interval"
+                            "valve_maintenance_interval": "Valve maintenance interval",
+                            "outside_sensor": "Outdoor temperature sensor",
+                            "predictive_gate": "Predictive accuracy gate",
+                            "predictive_mae_on": "Predictive promotion error",
+                            "predictive_mae_off": "Predictive demotion error",
+                            "predictive_min_validations": "Predictive minimum validations",
+                            "predictive_kp": "Predictive fallback proportional gain",
+                            "predictive_ki": "Predictive fallback integral gain",
+                            "predictive_initial_k_loss": "Predictive initial heat-loss coefficient"
                         },
                         "data_description": {
                             "cold_tolerance": "Minimum temperature difference between sensor reading and target before turning on heating. For example, if target is 25°C and tolerance is 0.5°C, heater starts when sensor reaches 24.5°C or below (default: 0.3°C).",
                             "hot_tolerance": "Minimum temperature difference between sensor reading and target before turning off heating. For example, if target is 25°C and tolerance is 0.5°C, heater stops when sensor reaches 25.5°C or above (default: 0.3°C).",
                             "min_cycle_duration": "Minimum time the heater switch must stay in its current state before being switched. Prevents rapid on/off cycling and protects heating equipment (default: 300 seconds).",
-                            "heater_control_mode": "How the heater switch is driven. Bang-bang is the classic on/off hysteresis. TPI pulses the switch with a time-proportional duty cycle, suited to slow systems like underfloor heating.",
-                            "pwm_cycle_duration": "Length of one PWM cycle for TPI control (seconds). The switch is on for duty × cycle, then off for the rest. Longer cycles suit slow/high-mass systems (default: 1800 s).",
+                            "heater_control_mode": "How the heater switch is driven: Bang-bang uses on/off hysteresis; TPI uses a proportional duty cycle; AI learns heating power; Predictive learns floor lag and forecasts room temperature, using PI while learning. Predictive requires an outdoor sensor.",
+                            "pwm_cycle_duration": "PWM cycle length for TPI, AI or Predictive control, in seconds (default: 1800). Predictive requires a multiple of 60 and at least three times the minimum cycle duration.",
                             "tpi_coef_int": "TPI weight on the room error (target − current). Higher reacts more strongly to temperature difference (default: 0.6).",
                             "tpi_coef_ext": "TPI weight on the outdoor gradient (target − outdoor), compensating for heat loss. Needs an outside sensor (default: 0.01).",
                             "ai_initial_heating_power": "AI Time Based only: starting estimate of heating power in °C/min before the model has learned. Learning refines this over 2-3 days (default: 0.01).",
                             "valve_maintenance": "Periodically exercise the heater valve (open/close pulses) even when heating is off, so it does not seize during summer.",
-                            "valve_maintenance_interval": "How often to run the valve maintenance cycle, in days (default: 7)."
+                            "valve_maintenance_interval": "How often to run the valve maintenance cycle, in days (default: 7).",
+                            "outside_sensor": "Required for Predictive control. Select a sensor reporting outdoor temperature; TPI can also use it to compensate for heat loss.",
+                            "predictive_gate": "Predictive only: auto uses predictions once learning and accuracy checks pass; off keeps the PI fallback; on forces predictions. A cold-room safety demotion overrides on for 24 hours (default: auto).",
+                            "predictive_mae_on": "Maximum 120-minute forecast mean absolute error for automatic promotion, in °C. Other learning and accuracy checks must also pass (default: 0.3).",
+                            "predictive_mae_off": "120-minute forecast mean absolute error above which automatic predictive control returns to the PI fallback, in °C (default: 0.45).",
+                            "predictive_min_validations": "Minimum number of independent 120-minute validation windows before automatic promotion. At least seven days of valid learning are also required (default: 48).",
+                            "predictive_kp": "Proportional gain of the predictive mode's PI fallback (default: 65.0).",
+                            "predictive_ki": "Integral gain of the predictive mode's PI fallback (default: 0.05).",
+                            "predictive_initial_k_loss": "Initial heat-loss feed-forward coefficient of the PI fallback, refined by learning (default: 2.0)."
                         }
                     }
                 }
@@ -205,7 +224,15 @@
                             "tpi_coef_ext": "TPI external coefficient",
                             "ai_initial_heating_power": "AI initial heating power",
                             "valve_maintenance": "Valve maintenance (anti-stick)",
-                            "valve_maintenance_interval": "Valve maintenance interval"
+                            "valve_maintenance_interval": "Valve maintenance interval",
+                            "outside_sensor": "Outdoor temperature sensor",
+                            "predictive_gate": "Predictive accuracy gate",
+                            "predictive_mae_on": "Predictive promotion error",
+                            "predictive_mae_off": "Predictive demotion error",
+                            "predictive_min_validations": "Predictive minimum validations",
+                            "predictive_kp": "Predictive fallback proportional gain",
+                            "predictive_ki": "Predictive fallback integral gain",
+                            "predictive_initial_k_loss": "Predictive initial heat-loss coefficient"
                         },
                         "data_description": {
                             "cold_tolerance": "Minimum temperature difference between sensor reading and target before activating heating or deactivating cooling. For example, if target is 25°C and tolerance is 0.5°C, changes occur when sensor reaches 24.5°C or below (default: 0.3°C).",
@@ -213,13 +240,21 @@
                             "heat_tolerance": "Mode-specific tolerance for heating operations. Overrides cold_tolerance when in heating mode for finer control. When set, this value determines when heating activates instead of using cold_tolerance (default: uses cold_tolerance if not specified).",
                             "cool_tolerance": "Mode-specific tolerance for cooling operations. Overrides hot_tolerance when in cooling mode for finer control. When set, this value determines when cooling activates instead of using hot_tolerance (default: uses hot_tolerance if not specified).",
                             "min_cycle_duration": "Minimum time the system switch must stay in its current state before being switched. Prevents rapid on/off cycling and protects equipment (default: 300 seconds).",
-                            "heater_control_mode": "How the heater switch is driven. Bang-bang is the classic on/off hysteresis. TPI pulses the switch with a time-proportional duty cycle, suited to slow systems like underfloor heating.",
-                            "pwm_cycle_duration": "Length of one PWM cycle for TPI control (seconds). The switch is on for duty × cycle, then off for the rest. Longer cycles suit slow/high-mass systems (default: 1800 s).",
+                            "heater_control_mode": "How the heater switch is driven: Bang-bang uses on/off hysteresis; TPI uses a proportional duty cycle; AI learns heating power; Predictive learns floor lag and forecasts room temperature, using PI while learning. Predictive requires an outdoor sensor.",
+                            "pwm_cycle_duration": "PWM cycle length for TPI, AI or Predictive control, in seconds (default: 1800). Predictive requires a multiple of 60 and at least three times the minimum cycle duration.",
                             "tpi_coef_int": "TPI weight on the room error (target − current). Higher reacts more strongly to temperature difference (default: 0.6).",
                             "tpi_coef_ext": "TPI weight on the outdoor gradient (target − outdoor), compensating for heat loss. Needs an outside sensor (default: 0.01).",
                             "ai_initial_heating_power": "AI Time Based only: starting estimate of heating power in °C/min before the model has learned. Learning refines this over 2-3 days (default: 0.01).",
                             "valve_maintenance": "Periodically exercise the heater valve (open/close pulses) even when heating is off, so it does not seize during summer.",
-                            "valve_maintenance_interval": "How often to run the valve maintenance cycle, in days (default: 7)."
+                            "valve_maintenance_interval": "How often to run the valve maintenance cycle, in days (default: 7).",
+                            "outside_sensor": "Required for Predictive control. Select a sensor reporting outdoor temperature; TPI can also use it to compensate for heat loss.",
+                            "predictive_gate": "Predictive only: auto uses predictions once learning and accuracy checks pass; off keeps the PI fallback; on forces predictions. A cold-room safety demotion overrides on for 24 hours (default: auto).",
+                            "predictive_mae_on": "Maximum 120-minute forecast mean absolute error for automatic promotion, in °C. Other learning and accuracy checks must also pass (default: 0.3).",
+                            "predictive_mae_off": "120-minute forecast mean absolute error above which automatic predictive control returns to the PI fallback, in °C (default: 0.45).",
+                            "predictive_min_validations": "Minimum number of independent 120-minute validation windows before automatic promotion. At least seven days of valid learning are also required (default: 48).",
+                            "predictive_kp": "Proportional gain of the predictive mode's PI fallback (default: 65.0).",
+                            "predictive_ki": "Integral gain of the predictive mode's PI fallback (default: 0.05).",
+                            "predictive_initial_k_loss": "Initial heat-loss feed-forward coefficient of the PI fallback, refined by learning (default: 2.0)."
                         }
                     }
                 }
@@ -816,7 +851,22 @@
                             "heat_tolerance": "Heat tolerance",
                             "cool_tolerance": "Cool tolerance",
                             "auto_outside_delta_boost": "Auto: outside-delta urgency threshold",
-                            "use_apparent_temp": "Use apparent (\"feels-like\") temperature for cooling decisions"
+                            "use_apparent_temp": "Use apparent (\"feels-like\") temperature for cooling decisions",
+                            "heater_control_mode": "Heater control mode",
+                            "pwm_cycle_duration": "PWM cycle duration",
+                            "tpi_coef_int": "TPI internal coefficient",
+                            "tpi_coef_ext": "TPI external coefficient",
+                            "ai_initial_heating_power": "AI initial heating power",
+                            "valve_maintenance": "Valve maintenance (anti-stick)",
+                            "valve_maintenance_interval": "Valve maintenance interval",
+                            "outside_sensor": "Outdoor temperature sensor",
+                            "predictive_gate": "Predictive accuracy gate",
+                            "predictive_mae_on": "Predictive promotion error",
+                            "predictive_mae_off": "Predictive demotion error",
+                            "predictive_min_validations": "Predictive minimum validations",
+                            "predictive_kp": "Predictive fallback proportional gain",
+                            "predictive_ki": "Predictive fallback integral gain",
+                            "predictive_initial_k_loss": "Predictive initial heat-loss coefficient"
                         },
                         "data_description": {
                             "initial_hvac_mode": "Initial HVAC mode when starting Home Assistant. Sets the default operation mode on startup.",
@@ -826,7 +876,22 @@
                             "heat_tolerance": "Tolerance for heating operations. Overrides the legacy cold_tolerance setting specifically for heating mode. When set, this value is used instead of cold_tolerance to determine when heating activates (default: uses cold_tolerance if not specified).",
                             "cool_tolerance": "Tolerance for cooling operations. Overrides the legacy hot_tolerance setting specifically for cooling mode. When set, this value is used instead of hot_tolerance to determine when cooling activates (default: uses hot_tolerance if not specified).",
                             "auto_outside_delta_boost": "When AUTO mode is on and the inside/outside temperature difference meets this threshold, normal-tier heating or cooling is treated as urgent. Only active when an outside sensor is configured. Default: 8°C / 14°F.",
-                            "use_apparent_temp": "When enabled and a humidity sensor is configured, AUTO and standalone COOL decide based on the heat index instead of raw temperature. Above 27°C / 80°F humidity makes the room feel hotter, so the cooler runs more aggressively. The actual sensor temperature continues to be shown in the UI."
+                            "use_apparent_temp": "When enabled and a humidity sensor is configured, AUTO and standalone COOL decide based on the heat index instead of raw temperature. Above 27°C / 80°F humidity makes the room feel hotter, so the cooler runs more aggressively. The actual sensor temperature continues to be shown in the UI.",
+                            "heater_control_mode": "How the heater switch is driven: Bang-bang uses on/off hysteresis; TPI uses a proportional duty cycle; AI learns heating power; Predictive learns floor lag and forecasts room temperature, using PI while learning. Predictive requires an outdoor sensor.",
+                            "pwm_cycle_duration": "PWM cycle length for TPI, AI or Predictive control, in seconds (default: 1800). Predictive requires a multiple of 60 and at least three times the minimum cycle duration.",
+                            "tpi_coef_int": "TPI weight on the room error (target − current). Higher reacts more strongly to temperature difference (default: 0.6).",
+                            "tpi_coef_ext": "TPI weight on the outdoor gradient (target − outdoor), compensating for heat loss. Needs an outside sensor (default: 0.01).",
+                            "ai_initial_heating_power": "AI Time Based only: starting estimate of heating power in °C/min before the model has learned. Learning refines this over 2-3 days (default: 0.01).",
+                            "valve_maintenance": "Periodically exercise the heater valve (open/close pulses) even when heating is off, so it does not seize during summer.",
+                            "valve_maintenance_interval": "How often to run the valve maintenance cycle, in days (default: 7).",
+                            "outside_sensor": "Required for Predictive control. Select a sensor reporting outdoor temperature; TPI can also use it to compensate for heat loss.",
+                            "predictive_gate": "Predictive only: auto uses predictions once learning and accuracy checks pass; off keeps the PI fallback; on forces predictions. A cold-room safety demotion overrides on for 24 hours (default: auto).",
+                            "predictive_mae_on": "Maximum 120-minute forecast mean absolute error for automatic promotion, in °C. Other learning and accuracy checks must also pass (default: 0.3).",
+                            "predictive_mae_off": "120-minute forecast mean absolute error above which automatic predictive control returns to the PI fallback, in °C (default: 0.45).",
+                            "predictive_min_validations": "Minimum number of independent 120-minute validation windows before automatic promotion. At least seven days of valid learning are also required (default: 48).",
+                            "predictive_kp": "Proportional gain of the predictive mode's PI fallback (default: 65.0).",
+                            "predictive_ki": "Integral gain of the predictive mode's PI fallback (default: 0.05).",
+                            "predictive_initial_k_loss": "Initial heat-loss feed-forward coefficient of the PI fallback, refined by learning (default: 2.0)."
                         }
                     }
                 }
@@ -1211,6 +1276,11 @@
                     "boost_switches": "Switches or input_booleans turned on while the Boost preset is active (e.g. the AC's native sleep switch). Restored to their previous state when the preset is cleared."
                 }
             }
+        },
+        "error": {
+            "predictive_requires_outside_sensor": "Predictive control requires an outdoor temperature sensor. Select one in Advanced Settings.",
+            "predictive_cycle_whole_minutes": "For Predictive control, PWM cycle duration must be positive and a multiple of 60 seconds.",
+            "predictive_cycle_too_short": "For Predictive control, PWM cycle duration must be at least three times the minimum cycle duration."
         }
     },
     "selector": {

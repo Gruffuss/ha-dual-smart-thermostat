@@ -464,6 +464,78 @@ class TestHeatingControlFields:
         with pytest.raises(vol.Invalid):
             PLATFORM_SCHEMA({**config, "predictive_gate": "invalid"})
 
+    @pytest.mark.parametrize("language", ["en", "sk"])
+    @pytest.mark.parametrize(
+        "flow,step",
+        [("config", "basic"), ("config", "heater_cooler"), ("options", "init")],
+    )
+    def test_predictive_translations_cover_rendered_fields(self, language, flow, step):
+        """Every heating control field and validation error has a translated label."""
+        import json
+        from pathlib import Path
+
+        path = (
+            Path(__file__).parents[2]
+            / "custom_components/dual_smart_thermostat/translations"
+        )
+        translations = json.loads(
+            (path / f"{language}.json").read_text(encoding="utf-8")
+        )
+        advanced = translations[flow]["step"][step]["sections"]["advanced_settings"]
+        for key in get_heating_control_fields():
+            assert advanced["data"].get(key.schema), key.schema
+            assert advanced["data_description"].get(key.schema), key.schema
+        for error in (
+            "predictive_requires_outside_sensor",
+            "predictive_cycle_whole_minutes",
+            "predictive_cycle_too_short",
+        ):
+            assert translations[flow]["error"].get(error)
+
+    def test_predictive_tool_dependencies(self):
+        """Offline validation requires outdoor data and recognizes predictive tuning."""
+        import json
+        from pathlib import Path
+
+        from tools.config_validator import ConfigValidator
+
+        validator = ConfigValidator()
+        valid, errors, _ = validator.validate_config(
+            {"heater_control_mode": "predictive"}
+        )
+        assert not valid
+        assert any("outside_sensor" in error for error in errors)
+        tuning = {
+            key.schema: key.default()
+            for key in get_heating_control_fields()
+            if key.schema.startswith("predictive_")
+        }
+        config = {
+            **tuning,
+            "heater_control_mode": "predictive",
+            "outside_sensor": "sensor.outdoor",
+            "pwm_cycle_duration": 1800,
+        }
+        assert validator.validate_config(config) == (True, [], [])
+        _, _, warnings = validator.validate_config(
+            {**config, "heater_control_mode": "bang_bang"}
+        )
+        for key in tuning:
+            assert any(key in warning for warning in warnings)
+        path = Path(__file__).parents[2] / "tools/focused_config_dependencies.json"
+        dependencies = json.loads(path.read_text(encoding="utf-8"))[
+            "conditional_parameters"
+        ]
+        assert "predictive" in dependencies["pwm_cycle_duration"]["required_value"]
+        for key in tuning:
+            assert dependencies[key]["required_parameter"] == "heater_control_mode"
+            assert dependencies[key]["required_value"] == ["predictive"]
+        assert (
+            dependencies["heater_control_mode"]["required_parameter"]
+            == "outside_sensor"
+        )
+        assert dependencies["heater_control_mode"]["when_value"] == "predictive"
+
     def test_heating_control_fields_prefill_defaults(self):
         fields = get_heating_control_fields(
             {CONF_HEATER_CONTROL_MODE: "tpi", CONF_TPI_COEF_INT: 0.9}

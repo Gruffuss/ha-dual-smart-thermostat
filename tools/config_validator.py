@@ -63,10 +63,17 @@ class ConfigValidator:
         # one of the listed values; otherwise the parameter is simply ignored.
         # Maps param -> (controlling_param, [allowed_values]).
         self.value_conditional_dependencies = {
-            "pwm_cycle_duration": ("heater_control_mode", ["tpi", "ai"]),
+            "pwm_cycle_duration": ("heater_control_mode", ["tpi", "ai", "predictive"]),
             "tpi_coef_int": ("heater_control_mode", ["tpi"]),
             "tpi_coef_ext": ("heater_control_mode", ["tpi"]),
             "ai_initial_heating_power": ("heater_control_mode", ["ai"]),
+            "predictive_gate": ("heater_control_mode", ["predictive"]),
+            "predictive_mae_on": ("heater_control_mode", ["predictive"]),
+            "predictive_mae_off": ("heater_control_mode", ["predictive"]),
+            "predictive_min_validations": ("heater_control_mode", ["predictive"]),
+            "predictive_kp": ("heater_control_mode", ["predictive"]),
+            "predictive_ki": ("heater_control_mode", ["predictive"]),
+            "predictive_initial_k_loss": ("heater_control_mode", ["predictive"]),
             "valve_maintenance_interval": ("valve_maintenance", [True]),
         }
 
@@ -94,6 +101,11 @@ class ConfigValidator:
         """
         errors = []
         warnings = []
+
+        if config.get("heater_control_mode") == "predictive" and not config.get(
+            "outside_sensor"
+        ):
+            errors.append("Predictive heater control requires 'outside_sensor'")
 
         # Check conditional dependencies
         for param, required_param in self.conditional_dependencies.items():

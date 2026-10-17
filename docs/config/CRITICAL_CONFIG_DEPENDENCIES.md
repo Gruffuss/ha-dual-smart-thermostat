@@ -232,20 +232,53 @@ Unlike the dependencies above, these are conditioned on the *value* of `heater_c
 
 | Parameter | Applies when | Description | Example |
 |-----------|--------------|-------------|---------|
-| `pwm_cycle_duration` | `heater_control_mode` is `tpi` or `ai` | PWM cycle length (seconds) | `1800` |
+| `pwm_cycle_duration` | `heater_control_mode` is `tpi`, `ai` or `predictive` | PWM cycle length (seconds) | `1800` |
 | `tpi_coef_int` | `heater_control_mode` is `tpi` | TPI internal (room-error) coefficient | `0.6` |
 | `tpi_coef_ext` | `heater_control_mode` is `tpi` | TPI external (outdoor-gradient) coefficient | `0.01` |
 | `ai_initial_heating_power` | `heater_control_mode` is `ai` | Initial heating-power estimate (°C/min) | `0.01` |
+| `predictive_gate` | `heater_control_mode` is `predictive` | Accuracy gate: `auto`, `off`, `on` | `auto` |
+| `predictive_mae_on` | `heater_control_mode` is `predictive` | Promotion MAE threshold (°C), 0.05–2 | `0.3` |
+| `predictive_mae_off` | `heater_control_mode` is `predictive` | Demotion MAE threshold (°C), 0.05–2 | `0.45` |
+| `predictive_min_validations` | `heater_control_mode` is `predictive` | Independent 120-minute validations, 12–500 | `48` |
+| `predictive_kp` | `heater_control_mode` is `predictive` | Fallback PI proportional gain, 0–200 | `65.0` |
+| `predictive_ki` | `heater_control_mode` is `predictive` | Fallback PI integral gain, 0–1 | `0.05` |
+| `predictive_initial_k_loss` | `heater_control_mode` is `predictive` | Initial heat-loss feed-forward coefficient, 0–10 | `2.0` |
 
 **Configuration Example**:
 ```yaml
 heater_control_mode: tpi
-pwm_cycle_duration: 1800   # ← Only applies with tpi or ai
+pwm_cycle_duration: 1800   # ← Only applies with tpi, ai or predictive
 tpi_coef_int: 0.6          # ← Only applies with tpi
 tpi_coef_ext: 0.01         # ← Only applies with tpi (and needs outside_sensor)
 ```
 
 > `tpi_coef_ext` additionally requires `outside_sensor` to have any effect.
+
+**Predictive requirements:** `outside_sensor` is mandatory when
+`heater_control_mode: predictive`. Config, reconfigure and options forms expose
+it beside the control mode in Advanced Settings. Those flows reject a PWM cycle
+that is not a positive multiple of 60 seconds, or is shorter than three times
+`min_cycle_duration`. The dependency validator also reports a missing outdoor sensor.
+
+The seven predictive settings above use their example values as defaults. They
+are available in config, reconfigure, options and YAML. `auto` keeps the PI
+fallback until learning and accuracy checks pass; `off` keeps PI; `on` forces
+prediction except during a 24-hour cold-room demotion. Automatic promotion also
+requires 672 valid learning blocks (seven days); this is not configurable.
+
+```yaml
+heater_control_mode: predictive
+outside_sensor: sensor.outdoor_temperature
+pwm_cycle_duration: 1800
+min_cycle_duration: "00:10:00"  # 3 * 600 <= 1800
+predictive_gate: auto
+predictive_mae_on: 0.3
+predictive_mae_off: 0.45
+predictive_min_validations: 48
+predictive_kp: 65.0
+predictive_ki: 0.05
+predictive_initial_k_loss: 2.0
+```
 
 ---
 
@@ -600,7 +633,7 @@ This ensures the thermostat remains functional even if templates have temporary 
 
 ## 🎯 Summary
 
-**22 conditional dependencies** across **7 feature areas**:
+**Configuration dependencies** by feature area:
 
 - **Secondary Heating** (2 parameters): Need `secondary_heater`
 - **Floor Protection** (2 parameters): Need `floor_sensor`
@@ -608,6 +641,8 @@ This ensures the thermostat remains functional even if templates have temporary 
 - **Fan Control** (4 parameters): Need `fan` (+ 1 needs `outside_sensor`)
 - **Humidity Control** (5 parameters): Need `humidity_sensor` + `dryer`
 - **Power Management** (3 parameters): Need `hvac_power_levels`
+- **Heater Control**: PWM settings depend on the selected control mode; predictive settings require `predictive`, which also requires `outside_sensor`.
+- **Valve Maintenance**: The maintenance interval only applies when valve maintenance is enabled.
 - **Template-Based Presets**: Referenced entities must exist (input_numbers, sensors, etc.)
 
 **2 system-type constraints**:

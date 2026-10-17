@@ -117,7 +117,15 @@
               "tpi_coef_ext": "TPI vonkajší koeficient",
               "ai_initial_heating_power": "AI počiatočný vykurovací výkon",
               "valve_maintenance": "Údržba ventilu (proti zaseknutiu)",
-              "valve_maintenance_interval": "Interval údržby ventilu"
+              "valve_maintenance_interval": "Interval údržby ventilu",
+              "outside_sensor": "Outdoor temperature sensor",
+              "predictive_gate": "Predictive accuracy gate",
+              "predictive_mae_on": "Predictive promotion error",
+              "predictive_mae_off": "Predictive demotion error",
+              "predictive_min_validations": "Predictive minimum validations",
+              "predictive_kp": "Predictive fallback proportional gain",
+              "predictive_ki": "Predictive fallback integral gain",
+              "predictive_initial_k_loss": "Predictive initial heat-loss coefficient"
             },
             "data_description": {
               "keep_alive": "Trvanie udržiavania nažive pre periodické prepínanie. Nastavte to, ak váš vypínač potrebuje signál pre udržanie v stave 'zapnuté'.",
@@ -125,17 +133,30 @@
               "target_temp_high": "Horná cieľová teplota pre systémy s dvojitou teplotou (režim vykurovanie/chladenie).",
               "target_temp_low": "Dolná cieľová teplota pre systémy s dvojitou teplotou (režim vykurovanie/chladenie).",
               "heat_cool_mode": "Povoliť režim vykurovanie/chladenie s dvojitou reguláciou teploty. Po povolení umožňuje automatické prepínanie medzi vykurovaním a chladením pre udržanie pohodlného teplotného rozsahu.",
-              "heater_control_mode": "Spôsob ovládania spínača vykurovania. Bang-bang je klasické zapnuté/vypnuté riadenie. TPI riadi ventil časovo-proporčným pracovným cyklom, vhodným pre pomalé systémy ako podlahové vykurovanie. AI Time Based pridáva samoučenie vykurovacieho výkonu.",
-              "pwm_cycle_duration": "Dĺžka jedného PWM cyklu pre TPI/AI riadenie (sekundy). Ventil je otvorený počas pracovného cyklu × dĺžka cyklu, zvyšok je zatvorený (predvolené: 1800 s).",
+              "heater_control_mode": "Spôsob ovládania spínača vykurovania. Bang-bang je klasické zapnuté/vypnuté riadenie. TPI riadi ventil časovo-proporčným pracovným cyklom, vhodným pre pomalé systémy ako podlahové vykurovanie. AI Time Based pridáva samoučenie vykurovacieho výkonu. Predictive learns floor lag and forecasts room temperature, using PI while learning. Requires an outdoor sensor.",
+              "pwm_cycle_duration": "Dĺžka jedného PWM cyklu pre TPI/AI riadenie (sekundy). Ventil je otvorený počas pracovného cyklu × dĺžka cyklu, zvyšok je zatvorený (predvolené: 1800 s). Predictive also uses this cycle; it must be a multiple of 60 and at least three times the minimum cycle duration.",
               "tpi_coef_int": "TPI váha pre odchýlku v miestnosti (cieľ − aktuálna). Vyššie hodnoty reagujú silnejšie na rozdiel teploty (predvolené: 0,6).",
               "tpi_coef_ext": "TPI váha pre vonkajší gradient (cieľ − vonkajšia), kompenzuje tepelné straty. Vyžaduje vonkajší senzor (predvolené: 0,01).",
               "ai_initial_heating_power": "Iba AI Time Based: počiatočný odhad vykurovacieho výkonu v °C/min pred naučením. Učenie ho spresní počas 2-3 dní (predvolené: 0,01).",
               "valve_maintenance": "Pravidelne preexponuje ventil vykurovania (impulzy otvorenia/zatvorenia) aj keď je vykurovanie vypnuté, aby sa počas leta nezasekol.",
-              "valve_maintenance_interval": "Ako často sa má spustiť cyklus údržby ventilu, v dňoch (predvolené: 7)."
+              "valve_maintenance_interval": "Ako často sa má spustiť cyklus údržby ventilu, v dňoch (predvolené: 7).",
+              "outside_sensor": "Required for Predictive control. Select a sensor reporting outdoor temperature; TPI can also use it to compensate for heat loss.",
+              "predictive_gate": "Predictive only: auto uses predictions once learning and accuracy checks pass; off keeps the PI fallback; on forces predictions. A cold-room safety demotion overrides on for 24 hours (default: auto).",
+              "predictive_mae_on": "Maximum 120-minute forecast mean absolute error for automatic promotion, in °C. Other learning and accuracy checks must also pass (default: 0.3).",
+              "predictive_mae_off": "120-minute forecast mean absolute error above which automatic predictive control returns to the PI fallback, in °C (default: 0.45).",
+              "predictive_min_validations": "Minimum number of independent 120-minute validation windows before automatic promotion. At least seven days of valid learning are also required (default: 48).",
+              "predictive_kp": "Proportional gain of the predictive mode's PI fallback (default: 65.0).",
+              "predictive_ki": "Integral gain of the predictive mode's PI fallback (default: 0.05).",
+              "predictive_initial_k_loss": "Initial heat-loss feed-forward coefficient of the PI fallback, refined by learning (default: 2.0)."
             }
           }
         }
       }
+    },
+    "error": {
+      "predictive_requires_outside_sensor": "Predictive control requires an outdoor temperature sensor. Select one in Advanced Settings.",
+      "predictive_cycle_whole_minutes": "For Predictive control, PWM cycle duration must be positive and a multiple of 60 seconds.",
+      "predictive_cycle_too_short": "For Predictive control, PWM cycle duration must be at least three times the minimum cycle duration."
     }
   },
   "services": {
@@ -156,6 +177,97 @@
     "run_valve_maintenance": {
       "name": "Spustiť údržbu ventilu",
       "description": "Okamžite spustí cyklus údržby ventilu (impulzy otvorenia/zatvorenia spínača vykurovania, potom obnoví predchádzajúci stav). Funguje aj keď je naplánovaná údržba ventilu vypnutá."
+    }
+  },
+  "config": {
+    "step": {
+      "basic": {
+        "sections": {
+          "advanced_settings": {
+            "name": "Advanced Settings",
+            "data": {
+              "heater_control_mode": "Heater control mode",
+              "pwm_cycle_duration": "PWM cycle duration",
+              "tpi_coef_int": "TPI internal coefficient",
+              "tpi_coef_ext": "TPI external coefficient",
+              "ai_initial_heating_power": "AI initial heating power",
+              "valve_maintenance": "Valve maintenance (anti-stick)",
+              "valve_maintenance_interval": "Valve maintenance interval",
+              "outside_sensor": "Outdoor temperature sensor",
+              "predictive_gate": "Predictive accuracy gate",
+              "predictive_mae_on": "Predictive promotion error",
+              "predictive_mae_off": "Predictive demotion error",
+              "predictive_min_validations": "Predictive minimum validations",
+              "predictive_kp": "Predictive fallback proportional gain",
+              "predictive_ki": "Predictive fallback integral gain",
+              "predictive_initial_k_loss": "Predictive initial heat-loss coefficient"
+            },
+            "data_description": {
+              "heater_control_mode": "How the heater switch is driven: Bang-bang uses on/off hysteresis; TPI uses a proportional duty cycle; AI learns heating power; Predictive learns floor lag and forecasts room temperature, using PI while learning. Predictive requires an outdoor sensor.",
+              "pwm_cycle_duration": "PWM cycle length for TPI, AI or Predictive control, in seconds (default: 1800). Predictive requires a multiple of 60 and at least three times the minimum cycle duration.",
+              "tpi_coef_int": "TPI weight on the room error (target − current). Higher reacts more strongly to temperature difference (default: 0.6).",
+              "tpi_coef_ext": "TPI weight on the outdoor gradient (target − outdoor), compensating for heat loss. Needs an outside sensor (default: 0.01).",
+              "ai_initial_heating_power": "AI Time Based only: starting estimate of heating power in °C/min before the model has learned. Learning refines this over 2-3 days (default: 0.01).",
+              "valve_maintenance": "Periodically exercise the heater valve (open/close pulses) even when heating is off, so it does not seize during summer.",
+              "valve_maintenance_interval": "How often to run the valve maintenance cycle, in days (default: 7).",
+              "outside_sensor": "Required for Predictive control. Select a sensor reporting outdoor temperature; TPI can also use it to compensate for heat loss.",
+              "predictive_gate": "Predictive only: auto uses predictions once learning and accuracy checks pass; off keeps the PI fallback; on forces predictions. A cold-room safety demotion overrides on for 24 hours (default: auto).",
+              "predictive_mae_on": "Maximum 120-minute forecast mean absolute error for automatic promotion, in °C. Other learning and accuracy checks must also pass (default: 0.3).",
+              "predictive_mae_off": "120-minute forecast mean absolute error above which automatic predictive control returns to the PI fallback, in °C (default: 0.45).",
+              "predictive_min_validations": "Minimum number of independent 120-minute validation windows before automatic promotion. At least seven days of valid learning are also required (default: 48).",
+              "predictive_kp": "Proportional gain of the predictive mode's PI fallback (default: 65.0).",
+              "predictive_ki": "Integral gain of the predictive mode's PI fallback (default: 0.05).",
+              "predictive_initial_k_loss": "Initial heat-loss feed-forward coefficient of the PI fallback, refined by learning (default: 2.0)."
+            }
+          }
+        }
+      },
+      "heater_cooler": {
+        "sections": {
+          "advanced_settings": {
+            "name": "Advanced Settings",
+            "data": {
+              "heater_control_mode": "Heater control mode",
+              "pwm_cycle_duration": "PWM cycle duration",
+              "tpi_coef_int": "TPI internal coefficient",
+              "tpi_coef_ext": "TPI external coefficient",
+              "ai_initial_heating_power": "AI initial heating power",
+              "valve_maintenance": "Valve maintenance (anti-stick)",
+              "valve_maintenance_interval": "Valve maintenance interval",
+              "outside_sensor": "Outdoor temperature sensor",
+              "predictive_gate": "Predictive accuracy gate",
+              "predictive_mae_on": "Predictive promotion error",
+              "predictive_mae_off": "Predictive demotion error",
+              "predictive_min_validations": "Predictive minimum validations",
+              "predictive_kp": "Predictive fallback proportional gain",
+              "predictive_ki": "Predictive fallback integral gain",
+              "predictive_initial_k_loss": "Predictive initial heat-loss coefficient"
+            },
+            "data_description": {
+              "heater_control_mode": "How the heater switch is driven: Bang-bang uses on/off hysteresis; TPI uses a proportional duty cycle; AI learns heating power; Predictive learns floor lag and forecasts room temperature, using PI while learning. Predictive requires an outdoor sensor.",
+              "pwm_cycle_duration": "PWM cycle length for TPI, AI or Predictive control, in seconds (default: 1800). Predictive requires a multiple of 60 and at least three times the minimum cycle duration.",
+              "tpi_coef_int": "TPI weight on the room error (target − current). Higher reacts more strongly to temperature difference (default: 0.6).",
+              "tpi_coef_ext": "TPI weight on the outdoor gradient (target − outdoor), compensating for heat loss. Needs an outside sensor (default: 0.01).",
+              "ai_initial_heating_power": "AI Time Based only: starting estimate of heating power in °C/min before the model has learned. Learning refines this over 2-3 days (default: 0.01).",
+              "valve_maintenance": "Periodically exercise the heater valve (open/close pulses) even when heating is off, so it does not seize during summer.",
+              "valve_maintenance_interval": "How often to run the valve maintenance cycle, in days (default: 7).",
+              "outside_sensor": "Required for Predictive control. Select a sensor reporting outdoor temperature; TPI can also use it to compensate for heat loss.",
+              "predictive_gate": "Predictive only: auto uses predictions once learning and accuracy checks pass; off keeps the PI fallback; on forces predictions. A cold-room safety demotion overrides on for 24 hours (default: auto).",
+              "predictive_mae_on": "Maximum 120-minute forecast mean absolute error for automatic promotion, in °C. Other learning and accuracy checks must also pass (default: 0.3).",
+              "predictive_mae_off": "120-minute forecast mean absolute error above which automatic predictive control returns to the PI fallback, in °C (default: 0.45).",
+              "predictive_min_validations": "Minimum number of independent 120-minute validation windows before automatic promotion. At least seven days of valid learning are also required (default: 48).",
+              "predictive_kp": "Proportional gain of the predictive mode's PI fallback (default: 65.0).",
+              "predictive_ki": "Integral gain of the predictive mode's PI fallback (default: 0.05).",
+              "predictive_initial_k_loss": "Initial heat-loss feed-forward coefficient of the PI fallback, refined by learning (default: 2.0)."
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "predictive_requires_outside_sensor": "Predictive control requires an outdoor temperature sensor. Select one in Advanced Settings.",
+      "predictive_cycle_whole_minutes": "For Predictive control, PWM cycle duration must be positive and a multiple of 60 seconds.",
+      "predictive_cycle_too_short": "For Predictive control, PWM cycle duration must be at least three times the minimum cycle duration."
     }
   }
 }
