@@ -18,14 +18,22 @@ from tests.unit.test_predictive_model import plant_step
 
 
 @lru_cache(maxsize=None)
-def simulate(mode, solar=False, gated=False, min_off_minutes=None):
+def simulate(
+    mode, solar=False, gated=False, min_off_minutes=None, persistence_demotion=False
+):
     theta = (0.03, 0.0015, 0)
     solar_outdoor_mean, solar_outdoor_amplitude = 8, 5
     if solar:
         min_outdoor = solar_outdoor_mean - solar_outdoor_amplitude
         assert theta[0] / theta[1] + min_outdoor >= 21 + 1
     ctl = PredictiveController(
-        PredictiveSettings(30, 10, gate=mode, min_off_minutes=min_off_minutes)
+        PredictiveSettings(
+            30,
+            10,
+            gate=mode,
+            min_off_minutes=min_off_minutes,
+            persistence_demotion=persistence_demotion,
+        )
     )
     driver = Driver(ctl)
     temp, slab = (21, 0.8) if solar else (18, 0)
@@ -115,9 +123,14 @@ def assert_solar_margin(pi, predictive):
     assert predictive["overshoot"] <= 0.3 + pi["overshoot"]
 
 
+# The v5-equivalence runs keep v5's actuator (no minimum off) and v5's gate,
+# which also demotes when mae120 exceeds persistence_mae120.
+V5 = dict(min_off_minutes=0, persistence_demotion=True)
+
+
 def test_predictive_auto_not_colder_than_pi_with_solar_mismatch_gated():
-    pi = simulate("off", solar=True, gated=True, min_off_minutes=0)
-    predictive = simulate("auto", solar=True, gated=True, min_off_minutes=0)
+    pi = simulate("off", solar=True, gated=True, **V5)
+    predictive = simulate("auto", solar=True, gated=True, **V5)
     assert_solar_margin(pi, predictive)
     assert_v5_measurements(pi, 3288, 7866, 19.649872839, 0.281292166)
     assert_v5_measurements(predictive, 3175, 7752, 19.673562927, 0.281292166)
@@ -135,8 +148,8 @@ def assert_v5_measurements(result, below_07, below_03, min_temp, overshoot):
 
 
 def test_predictive_port_matches_v5_always_on_diagnostic():
-    pi = simulate("off", solar=True, min_off_minutes=0)
-    predictive = simulate("auto", solar=True, min_off_minutes=0)
+    pi = simulate("off", solar=True, **V5)
+    predictive = simulate("auto", solar=True, **V5)
     assert_v5_measurements(pi, 2124, 3999, 19.726638896, 0.486864199)
     assert_v5_measurements(predictive, 2228, 4080, 19.726638896, 0.503619152)
     assert pi["promotions_minute"] == pi["demotions_minute"] == []

@@ -73,8 +73,8 @@ class Driver:
         return self.valve
 
 
-def ready_gate():
-    ctl = controller()
+def ready_gate(**settings):
+    ctl = controller(**settings)
     ctl.tracker.n120 = 400
     ctl.tracker.n120_independent = 48
     ctl.tracker.mae120 = 0.2
@@ -159,8 +159,10 @@ def test_forced_on_cannot_undo_cold_floor_demotion_after_reload():
     assert restored.mode == "predictive"
 
 
-def test_gate_requires_skill_against_persistence():
-    ctl = ready_gate()
+@pytest.mark.parametrize("persistence_demotion", [False, True])
+def test_gate_requires_skill_against_persistence(persistence_demotion):
+    """Promotion needs skill over persistence; only v5 also demotes on it."""
+    ctl = ready_gate(persistence_demotion=persistence_demotion)
     ctl.tracker.mae120 = 0.29
     ctl.minute(inputs())
     assert ctl.mode == "fallback"
@@ -168,8 +170,23 @@ def test_gate_requires_skill_against_persistence():
     assert ctl.minute(inputs(1))
     assert ctl.mode == "predictive"
     ctl.tracker.mae120 = 0.41
-    assert ctl.minute(inputs(2))
+    assert ctl.minute(inputs(2)) == persistence_demotion
+    assert ctl.mode == ("fallback" if persistence_demotion else "predictive")
+    ctl.tracker.mae120 = 0.46
+    ctl.minute(inputs(3))
     assert ctl.mode == "fallback"
+
+
+def test_production_gate_never_demotes_on_persistence():
+    """Owner, 2026-10-17: a steady room must not demote an accurate model."""
+    assert PredictiveSettings(30, 10).persistence_demotion is False
+    ctl = ready_gate()
+    ctl.mode = "predictive"
+    ctl.tracker.mae120 = 0.3
+    ctl.tracker.persistence_mae120 = 0.05
+    for minute in range(3):
+        ctl.minute(inputs(minute))
+    assert ctl.mode == "predictive"
 
 
 def test_plan_at_a_sub_minute_offset_does_not_count_a_minute():

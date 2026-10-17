@@ -53,6 +53,11 @@ class PredictiveSettings:
     ki: float = 0.05
     k_loss: float = 2.0
     min_off_minutes: int | None = None
+    # v5 also demoted when mae120 > persistence_mae120. The owner dropped that
+    # (2026-10-17): a room held steady by predictive shrinks the persistence
+    # baseline it is judged against. True only reproduces v5 in the
+    # equivalence tests; it is not a configuration option.
+    persistence_demotion: bool = False
 
     def __post_init__(self) -> None:
         """Production protects both segments; zero reproduces the v5 actuator."""
@@ -136,7 +141,10 @@ class PredictiveController:
             mode = "predictive"
         elif self.mode == "predictive" and (
             tracker.mae120 > settings.mae_off
-            or tracker.mae120 > tracker.persistence_mae120
+            or (
+                settings.persistence_demotion
+                and tracker.mae120 > tracker.persistence_mae120
+            )
         ):
             mode = "fallback"
         return self._switch_mode(mode)
