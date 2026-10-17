@@ -1,5 +1,6 @@
 from datetime import timedelta
 import logging
+import math
 
 from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
 from homeassistant.core import HomeAssistant
@@ -19,12 +20,27 @@ from ..const import (
     CONF_HEATER_CONTROL_MODE,
     CONF_INITIAL_HVAC_MODE,
     CONF_MIN_DUR,
+    CONF_PREDICTIVE_GATE,
+    CONF_PREDICTIVE_INITIAL_K_LOSS,
+    CONF_PREDICTIVE_KI,
+    CONF_PREDICTIVE_KP,
+    CONF_PREDICTIVE_MAE_OFF,
+    CONF_PREDICTIVE_MAE_ON,
+    CONF_PREDICTIVE_MIN_VALIDATIONS,
     CONF_PWM_CYCLE_DURATION,
     CONF_TPI_COEF_EXT,
     CONF_TPI_COEF_INT,
     DEFAULT_PWM_CYCLE_DURATION,
+    DEFAULT_PREDICTIVE_GATE,
+    DEFAULT_PREDICTIVE_INITIAL_K_LOSS,
+    DEFAULT_PREDICTIVE_KI,
+    DEFAULT_PREDICTIVE_KP,
+    DEFAULT_PREDICTIVE_MAE_OFF,
+    DEFAULT_PREDICTIVE_MAE_ON,
+    DEFAULT_PREDICTIVE_MIN_VALIDATIONS,
     HeaterControlMode,
 )
+from ..control.predictive import PredictiveSettings
 from ..control.thermal_learning import DEFAULT_HEATING_POWER
 from ..control.tpi import DEFAULT_COEF_EXT, DEFAULT_COEF_INT, TpiParams
 from ..hvac_device.ai_heater_device import AiHeaterDevice
@@ -39,6 +55,7 @@ from ..hvac_device.heater_cooler_device import HeaterCoolerDevice
 from ..hvac_device.heater_device import HeaterDevice
 from ..hvac_device.multi_hvac_device import MultiHvacDevice
 from ..hvac_device.pwm_heater_device import PwmHeaterDevice
+from ..hvac_device.predictive_heater_device import PredictiveHeaterDevice
 from ..hvac_device.wrapped_climate_device import WrappedClimateDevice
 from ..managers.environment_manager import EnvironmentManager
 from ..managers.feature_manager import FeatureManager
@@ -51,11 +68,18 @@ _LOGGER = logging.getLogger(__name__)
 class HVACDeviceFactory:
 
     def __init__(
-        self, hass: HomeAssistant, config: ConfigType, features: FeatureManager
+        self,
+        hass: HomeAssistant,
+        config: ConfigType,
+        features: FeatureManager,
+        *,
+        store_key: str | None = None,
     ) -> None:
 
         self.hass = hass
         self._features = features
+        self._config = config
+        self._store_key = store_key
 
         self._heater_entity_id = config[CONF_HEATER]
         self._cooler_entity_id = None
@@ -359,6 +383,41 @@ class HVACDeviceFactory:
         hvac_power: HvacPowerManager,
     ) -> HeaterDevice:
         """Create a bang-bang, TPI, or AI heater device per the control mode."""
+        if self._heater_control_mode == HeaterControlMode.PREDICTIVE:
+            config = self._config
+            settings = PredictiveSettings(
+                cycle_minutes=int(self._pwm_cycle_duration.total_seconds() / 60),
+                min_on_minutes=(
+                    math.ceil(self._min_cycle_duration.total_seconds() / 60)
+                    if self._min_cycle_duration
+                    else 0
+                ),
+                gate=config.get(CONF_PREDICTIVE_GATE, DEFAULT_PREDICTIVE_GATE),
+                mae_on=config.get(CONF_PREDICTIVE_MAE_ON, DEFAULT_PREDICTIVE_MAE_ON),
+                mae_off=config.get(CONF_PREDICTIVE_MAE_OFF, DEFAULT_PREDICTIVE_MAE_OFF),
+                min_validations=config.get(
+                    CONF_PREDICTIVE_MIN_VALIDATIONS, DEFAULT_PREDICTIVE_MIN_VALIDATIONS
+                ),
+                kp=config.get(CONF_PREDICTIVE_KP, DEFAULT_PREDICTIVE_KP),
+                ki=config.get(CONF_PREDICTIVE_KI, DEFAULT_PREDICTIVE_KI),
+                k_loss=config.get(
+                    CONF_PREDICTIVE_INITIAL_K_LOSS, DEFAULT_PREDICTIVE_INITIAL_K_LOSS
+                ),
+            )
+            return PredictiveHeaterDevice(
+                self.hass,
+                self._heater_entity_id,
+                self._min_cycle_duration,
+                self._initial_hvac_mode,
+                environment,
+                openings,
+                self._features,
+                hvac_power,
+                self._pwm_cycle_duration,
+                settings,
+                self._store_key,
+            )
+
         if self._heater_control_mode == HeaterControlMode.AI:
             _LOGGER.info(
                 "Creating AI Time Based heater device for %s", self._heater_entity_id

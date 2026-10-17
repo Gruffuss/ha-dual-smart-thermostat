@@ -88,6 +88,12 @@ class PwmHeaterController:
         self._clear_timer()
         await self._turn_off()
 
+    async def async_restart(self) -> None:
+        """Replace the running cycle with a freshly computed plan now."""
+        self._clear_timer()
+        self._running = True
+        await self._async_begin_cycle()
+
     def cancel(self) -> None:
         """Cancel timers without issuing switch calls (for teardown)."""
         self._running = False

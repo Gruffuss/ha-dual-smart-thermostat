@@ -526,7 +526,9 @@ async def _async_setup_config(
 
     preset_action_manager = PresetActionManager(hass, feature_manager)
 
-    device_factory = HVACDeviceFactory(hass, config, feature_manager)
+    device_factory = HVACDeviceFactory(
+        hass, config, feature_manager, store_key=unique_id or name
+    )
 
     hvac_device = device_factory.create_device(
         environment_manager, opening_manager, hvac_power_manager
