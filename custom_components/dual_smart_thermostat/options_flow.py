@@ -523,6 +523,15 @@ class OptionsFlowHandler(OptionsFlow):
             # Extract advanced settings from section and flatten to top level
             if "advanced_settings" in user_input:
                 advanced_settings = user_input.pop("advanced_settings")
+                if current_config.get(CONF_SYSTEM_TYPE, SYSTEM_TYPE_SIMPLE_HEATER) in (
+                    SYSTEM_TYPE_SIMPLE_HEATER,
+                    SYSTEM_TYPE_HEATER_COOLER,
+                ):
+                    # Optional selectors are omitted when cleared. A suggested
+                    # value shows the old entity without silently reinserting it.
+                    user_input[CONF_OUTSIDE_SENSOR] = (advanced_settings or {}).get(
+                        CONF_OUTSIDE_SENSOR
+                    )
                 if advanced_settings:
                     user_input.update(advanced_settings)
 

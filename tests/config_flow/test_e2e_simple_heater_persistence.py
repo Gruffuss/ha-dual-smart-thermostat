@@ -88,7 +88,10 @@ async def test_predictive_config_options_persistence(hass, gate):
         if key.default is not vol.UNDEFINED
     }
     for key, value in settings.items():
-        if key != "min_cycle_duration":
+        if key == "outside_sensor":
+            marker = next(field for field in advanced.schema if field.schema == key)
+            assert marker.description["suggested_value"] == value
+        elif key != "min_cycle_duration":
             assert defaults[key] == value
     changed = {
         key: value for key, value in settings.items() if key != "min_cycle_duration"
@@ -116,7 +119,11 @@ async def test_predictive_config_options_persistence(hass, gate):
         if key.default is not vol.UNDEFINED
     }
     for key, value in changed.items():
-        assert defaults[key] == value
+        if key == "outside_sensor":
+            marker = next(field for field in advanced.schema if field.schema == key)
+            assert marker.description["suggested_value"] == value
+        else:
+            assert defaults[key] == value
 
 
 @pytest.mark.asyncio

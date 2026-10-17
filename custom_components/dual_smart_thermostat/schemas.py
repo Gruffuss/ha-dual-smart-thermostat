@@ -371,7 +371,7 @@ def get_heating_control_fields(
     fields[
         vol.Optional(
             CONF_OUTSIDE_SENSOR,
-            default=defaults.get(CONF_OUTSIDE_SENSOR) or vol.UNDEFINED,
+            description={"suggested_value": defaults.get(CONF_OUTSIDE_SENSOR)},
         )
     ] = get_entity_selector(SENSOR_DOMAIN)
 
