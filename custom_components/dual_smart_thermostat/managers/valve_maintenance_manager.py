@@ -119,7 +119,7 @@ class ValveMaintenanceManager:
                 {ATTR_ENTITY_ID: self.entity_id},
                 blocking=True,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             _LOGGER.error(
                 "Valve maintenance %s failed for %s: %s", service, self.entity_id, e
             )

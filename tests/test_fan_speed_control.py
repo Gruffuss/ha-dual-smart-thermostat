@@ -496,7 +496,6 @@ async def test_turn_on_handles_fan_mode_service_failure_preset(
     @callback
     def turn_on_service(call) -> None:
         """Mock successful turn on."""
-        pass
 
     hass.services.async_register(ha.DOMAIN, SERVICE_TURN_ON, turn_on_service)
 
@@ -558,7 +557,6 @@ async def test_turn_on_handles_fan_mode_service_failure_percentage(
     @callback
     def turn_on_service(call) -> None:
         """Mock successful turn on."""
-        pass
 
     hass.services.async_register(ha.DOMAIN, SERVICE_TURN_ON, turn_on_service)
 

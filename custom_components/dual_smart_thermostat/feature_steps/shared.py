@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock
 
 
 def build_schema_context_from_flow(
     flow_instance, collected_config: dict, current_config: dict | None = None
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return a lightweight schema context containing a hass states snapshot and merged configs.
 
     This avoids passing Home Assistant objects directly into schema factories (which may be

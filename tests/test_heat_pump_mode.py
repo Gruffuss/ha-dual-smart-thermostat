@@ -97,7 +97,7 @@ async def test_unique_id(
     assert entry.unique_id == unique_id
 
 
-async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:  # noqa: F811
+async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:
     """Test the setting of defaults to unknown."""
     heater_switch = "input_boolean.test"
     heat_pump_cooling_switch = "input_boolean.test2"
@@ -120,7 +120,7 @@ async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:  # noqa: 
 
 async def test_setup_gets_current_temperature_from_sensor(
     hass: HomeAssistant,
-) -> None:  # noqa: F811
+) -> None:
     """Test that current temperature is updated on entity addition."""
     hass.config.units = METRIC_SYSTEM
     setup_sensor(hass, 24)
@@ -194,7 +194,7 @@ async def test_get_hvac_modes(
     setup_comp_1,  # noqa: F811
     dual_mode,
     cooling_mode,
-    hvac_modes,  # noqa: F811
+    hvac_modes,
 ) -> None:
     """Test that the operation list returns the correct modes."""
     # heater_switch = "input_boolean.test"
@@ -615,7 +615,7 @@ async def test_set_preset_mode(
     hass: HomeAssistant,
     setup_comp_heat_pump_presets,
     preset,
-    temp,  # noqa: F811
+    temp,
 ) -> None:
     """Test the setting preset mode."""
     await common.async_set_temperature(hass, 23)
@@ -643,7 +643,7 @@ async def test_set_preset_mode_heat_cool(
     setup_comp_heat_pump_heat_cool_presets,
     preset,
     temp_low,
-    temp_high,  # noqa: F811
+    temp_high,
 ) -> None:
     """Test the setting preset mode."""
     setup_sensor(hass, 23)
@@ -672,7 +672,7 @@ async def test_set_preset_mode_and_restore_prev_temp(
     hass: HomeAssistant,
     setup_comp_heat_pump_presets,
     preset,
-    temp,  # noqa: F811
+    temp,
 ) -> None:
     """Test the setting preset mode."""
     await common.async_set_temperature(hass, 23)
@@ -704,7 +704,7 @@ async def test_set_preset_mode_heat_cool_and_restore_prev_temp(
     setup_comp_heat_pump_heat_cool_presets,
     preset,
     temp_low,
-    temp_high,  # noqa: F811
+    temp_high,
 ) -> None:
     """Test the setting preset mode."""
     setup_sensor(hass, 23)
@@ -738,7 +738,7 @@ async def test_set_preset_mode_twice_and_restore_prev_temp(
     hass: HomeAssistant,
     setup_comp_heat_pump_presets,
     preset,
-    temp,  # noqa: F811
+    temp,
 ) -> None:
     """Test the setting preset mode."""
     await common.async_set_temperature(hass, 23)
@@ -771,7 +771,7 @@ async def test_set_preset_mode_heat_cool_twice_and_restore_prev_temp(
     setup_comp_heat_pump_heat_cool_presets,
     preset,
     temp_low,
-    temp_high,  # noqa: F811
+    temp_high,
 ) -> None:
     """Test the setting preset mode."""
     setup_sensor(hass, 23)
@@ -790,7 +790,7 @@ async def test_set_preset_mode_heat_cool_twice_and_restore_prev_temp(
 
 async def test_set_preset_mode_invalid(
     hass: HomeAssistant,
-    setup_comp_heat_pump_presets,  # noqa: F811
+    setup_comp_heat_pump_presets,
 ) -> None:
     """Test the setting invalid preset mode."""
     await common.async_set_temperature(hass, 23)
@@ -824,7 +824,7 @@ async def test_set_preset_mode_set_temp_keeps_preset_mode(
     hass: HomeAssistant,
     setup_comp_heat_pump_presets,
     preset,
-    temp,  # noqa: F811
+    temp,
 ) -> None:
     """Test the setting preset mode then set temperature.
 
@@ -872,7 +872,7 @@ async def test_set_preset_mode_heat_cool_set_temp_keeps_preset_mode(
     setup_comp_heat_pump_heat_cool_presets,
     preset,
     temp_low,
-    temp_high,  # noqa: F811
+    temp_high,
 ) -> None:
     """Test the setting preset mode then set temperature.
 
@@ -909,7 +909,7 @@ async def test_set_preset_mode_heat_cool_set_temp_keeps_preset_mode(
 
 
 # async def test_set_target_temp_off(
-#     hass: HomeAssistant, setup_comp_heat_pump  # noqa: F811
+#     hass: HomeAssistant, setup_comp_heat_pump
 # ) -> None:
 #     """Test if target temperature turn heat pump off."""
 #     # setup_sensor(hass, 23)
@@ -949,7 +949,7 @@ async def test_toggle(
     heat_pump_cooling,
     from_hvac_mode,
     to_hvac_mode,
-    setup_comp_heat_pump,  # noqa: F811
+    setup_comp_heat_pump,
 ) -> None:
     """Test change mode from from_hvac_mode to to_hvac_mode.
     And toggle resumes from to_hvac_mode
@@ -972,9 +972,7 @@ async def test_toggle(
     assert state.state == from_hvac_mode
 
 
-async def test_hvac_mode_cool(
-    hass: HomeAssistant, setup_comp_heat_pump  # noqa: F811
-) -> None:
+async def test_hvac_mode_cool(hass: HomeAssistant, setup_comp_heat_pump) -> None:
     """Test change mode from OFF to COOL.
 
     Switch turns on when temp below setpoint and mode changes.
@@ -995,9 +993,7 @@ async def test_hvac_mode_cool(
     assert call.data["entity_id"] == common.ENT_SWITCH
 
 
-async def test_hvac_mode_heat(
-    hass: HomeAssistant, setup_comp_heat_pump  # noqa: F811
-) -> None:
+async def test_hvac_mode_heat(hass: HomeAssistant, setup_comp_heat_pump) -> None:
     """Test change mode from OFF to COOL.
 
     Switch turns on when temp below setpoint and mode changes.
@@ -1019,7 +1015,7 @@ async def test_hvac_mode_heat(
 
 
 async def test_hvac_mode_heat_switches_to_cool(
-    hass: HomeAssistant, setup_comp_heat_pump  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_pump
 ) -> None:
     """Test change mode from OFF to COOL.
 
@@ -1063,7 +1059,7 @@ async def test_hvac_mode_heat_switches_to_cool(
 
 
 async def test_hvac_mode_cool_switches_to_heat(
-    hass: HomeAssistant, setup_comp_heat_pump  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_pump
 ) -> None:
     """Test change mode from OFF to COOL.
 

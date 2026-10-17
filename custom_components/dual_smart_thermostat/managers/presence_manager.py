@@ -11,7 +11,6 @@ from datetime import timedelta
 import enum
 from itertools import chain
 import logging
-from typing import List
 
 from homeassistant.components.climate import HVACMode
 from homeassistant.const import (
@@ -60,7 +59,7 @@ class PresenceManager:
         scope = config.get(CONF_PRESENCE_SCOPE)
         if isinstance(scope, str):
             scope = [scope]
-        self.presence_scope: List[PresenceHvacModeScope] = scope or [
+        self.presence_scope: list[PresenceHvacModeScope] = scope or [
             PresenceHvacModeScope.ALL
         ]
 
@@ -167,7 +166,7 @@ class PresenceManager:
         Handles both the YAML form (``timedelta``) and the config/options flow
         form (plain seconds as ``int``/``float``).
         """
-        timeouts: List[float] = []
+        timeouts: list[float] = []
         for presence in self.presence:
             value = presence.get(timeout_attr)
             if value is None:

@@ -3,6 +3,9 @@
 target-version = "py313"
 
 [lint]
+# flake8 also runs; keep its E402 noqa comments (ruff exempts imports after
+# sys.path edits, flake8 does not, so RUF100 would strip ones flake8 needs).
+external = ["E402"]
 ignore = [
     # File mode, not code: the Docker dev image bind-mounts a Windows checkout,
     # where every file shows as 0777, so this fires on all files there.
@@ -11,6 +14,9 @@ ignore = [
     # schema building, device service calls, test probes). Narrowing them
     # changes behaviour and needs a per-site review, not a lint fix.
     "BLE001",
+    # Pure style. The remaining nested ifs keep comments between the
+    # conditions or mirror neighbouring checks; ruff's fixer declines them too.
+    "SIM102",
 ]
 
 [lint.per-file-ignores]

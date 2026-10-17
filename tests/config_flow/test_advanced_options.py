@@ -163,7 +163,6 @@ def test_edge_cases():
 
     # Edge case 3: Config with configure_advanced=False explicitly
     print("Edge case 3: Config with configure_advanced=False")
-    _false_config = {"configure_advanced": False}  # noqa: F841
     schema3 = get_ac_only_features_schema()
     print(f"✅ False config → {len(schema3.schema)} fields (should be 5)")
 

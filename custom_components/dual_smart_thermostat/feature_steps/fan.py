@@ -18,7 +18,6 @@ class FanSteps:
 
     def __init__(self):
         """Initialize fan steps handler."""
-        pass
 
     async def async_step_toggle(
         self,

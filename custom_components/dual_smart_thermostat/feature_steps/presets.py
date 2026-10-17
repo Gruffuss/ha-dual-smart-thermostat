@@ -17,7 +17,6 @@ class PresetsSteps:
 
     def __init__(self):
         """Initialize presets steps handler."""
-        pass
 
     async def async_step_selection(
         self,

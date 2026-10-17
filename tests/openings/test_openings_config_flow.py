@@ -31,10 +31,10 @@ def test_openings_processing_logic():
             if entity_key in config:
                 opening_config = {"entity_id": config[entity_key]}
 
-                if timeout_key in config and config[timeout_key]:
+                if config.get(timeout_key):
                     opening_config["timeout"] = config[timeout_key]
 
-                if closing_timeout_key in config and config[closing_timeout_key]:
+                if config.get(closing_timeout_key):
                     opening_config["closing_timeout"] = config[closing_timeout_key]
 
                 openings.append(opening_config)

@@ -262,4 +262,3 @@ class HeaterCoolerDevice(MultiHvacDevice):
 
     async def _async_check_device_initial_state(self) -> None:
         """Child devices on_startup handles this."""
-        pass

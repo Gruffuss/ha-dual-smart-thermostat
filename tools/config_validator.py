@@ -6,7 +6,7 @@ This script validates configurations against critical parameter dependencies,
 focusing only on parameters that require other parameters to function.
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import yaml
 
@@ -91,8 +91,8 @@ class ConfigValidator:
         ]
 
     def validate_config(
-        self, config: Dict[str, Any]
-    ) -> Tuple[bool, List[str], List[str]]:
+        self, config: dict[str, Any]
+    ) -> tuple[bool, list[str], list[str]]:
         """
         Validate configuration against dependencies.
 
@@ -154,7 +154,7 @@ class ConfigValidator:
 
         return len(errors) == 0, errors, warnings
 
-    def suggest_fixes(self, config: Dict[str, Any]) -> List[str]:
+    def suggest_fixes(self, config: dict[str, Any]) -> list[str]:
         """Suggest fixes for configuration issues."""
         suggestions = []
 
@@ -168,7 +168,7 @@ class ConfigValidator:
 
         return suggestions
 
-    def get_feature_groups(self, config: Dict[str, Any]) -> Dict[str, Dict]:
+    def get_feature_groups(self, config: dict[str, Any]) -> dict[str, dict]:
         """Analyze configuration by feature groups."""
         features = {
             "secondary_heating": {

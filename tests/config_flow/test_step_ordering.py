@@ -229,10 +229,12 @@ class TestConfigStepOrdering:
         schema_dict = result["data_schema"].schema
         scope_field = None
         for key, value in schema_dict.items():
-            if hasattr(key, "key") and key.key == "openings_scope":
-                scope_field = value
-                break
-            elif hasattr(key, "schema") and "openings_scope" in str(key.schema):
+            if (
+                hasattr(key, "key")
+                and key.key == "openings_scope"
+                or hasattr(key, "schema")
+                and "openings_scope" in str(key.schema)
+            ):
                 scope_field = value
                 break
 

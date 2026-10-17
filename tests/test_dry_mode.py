@@ -123,7 +123,7 @@ async def test_unique_id(
     assert entry.unique_id == unique_id
 
 
-async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:  # noqa: F811
+async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:
     """Test the setting of defaults to unknown."""
     heater_switch = "input_boolean.test"
     dryer_switch = "input_boolean.test_dryer"
@@ -148,7 +148,7 @@ async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:  # noqa: 
 
 async def test_setup_gets_current_humidity_from_sensor(
     hass: HomeAssistant,
-) -> None:  # noqa: F811
+) -> None:
     """Test that current temperature is updated on entity addition."""
     hass.config.units = METRIC_SYSTEM
     setup_humidity_sensor(hass, 50)
@@ -209,9 +209,7 @@ async def setup_comp_heat_ac_cool_dry(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
 
-async def test_get_hvac_modes(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
-) -> None:
+async def test_get_hvac_modes(hass: HomeAssistant, setup_comp_heat_ac_cool_dry) -> None:
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(common.ENTITY)
     modes = state.attributes.get("hvac_modes")
@@ -270,7 +268,7 @@ async def test_set_preset_mode(
     setup_comp_heat_ac_cool_dry_presets,
     preset,
     temp,
-    humidity,  # noqa: F811
+    humidity,
 ) -> None:
     """Test the setting preset mode."""
     await common.async_set_temperature(hass, 23)
@@ -300,7 +298,7 @@ async def test_set_preset_mode_and_restore_prev_humidity(
     setup_comp_heat_ac_cool_dry_presets,
     preset,
     temp,
-    humidity,  # noqa: F811
+    humidity,
 ) -> None:
     """Test the setting preset mode.
 
@@ -336,7 +334,7 @@ async def test_set_preset_modet_twice_and_restore_prev_humidity(
     setup_comp_heat_ac_cool_dry_presets,
     preset,
     temp,
-    humidity,  # noqa: F811
+    humidity,
 ) -> None:
     """Test the setting preset mode twice in a row.
 
@@ -358,7 +356,7 @@ async def test_set_preset_modet_twice_and_restore_prev_humidity(
 
 
 async def test_set_preset_mode_invalid(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry_presets  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry_presets
 ) -> None:
     """Test an invalid mode raises an error and ignore case when checking modes."""
     await common.async_set_temperature(hass, 23)
@@ -394,7 +392,7 @@ async def test_set_preset_mode_set_temp_keeps_preset_mode(
     setup_comp_heat_ac_cool_dry_presets,
     preset,
     temp,
-    humidity,  # noqa: F811
+    humidity,
 ) -> None:
     """Test the setting preset mode then set temperature and humidity.
 
@@ -427,7 +425,7 @@ async def test_set_preset_mode_set_temp_keeps_preset_mode(
 
 
 async def test_set_target_temp_ac_dry_off(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test if target temperature turn ac off."""
     setup_humidity_sensor(hass, 50)
@@ -442,7 +440,7 @@ async def test_set_target_temp_ac_dry_off(
 
 
 async def test_turn_away_mode_on_drying(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test the setting away mode when cooling."""
     setup_switch_dual(hass, common.ENT_DRYER, False, True)
@@ -475,7 +473,7 @@ async def test_toggle(
     hass: HomeAssistant,
     from_hvac_mode,
     to_hvac_mode,
-    setup_comp_heat_ac_cool_dry,  # noqa: F811
+    setup_comp_heat_ac_cool_dry,
 ) -> None:
     """Test change mode from from_hvac_mode to to_hvac_mode.
     And toggle resumes from to_hvac_mode
@@ -494,9 +492,7 @@ async def test_toggle(
     assert state.state == from_hvac_mode
 
 
-async def test_hvac_mode_cdry(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
-) -> None:
+async def test_hvac_mode_cdry(hass: HomeAssistant, setup_comp_heat_ac_cool_dry) -> None:
     """Test change mode from OFF to DRY.
 
     Switch turns on when temp below setpoint and mode changes.
@@ -517,7 +513,7 @@ async def test_hvac_mode_cdry(
 
 
 async def test_sensor_chhange_dont_control_dryer_when_off(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test that the humidifier switch doesn't turn on when the thermostat is off."""
     # Given
@@ -536,7 +532,7 @@ async def test_sensor_chhange_dont_control_dryer_when_off(
 
 
 async def test_set_target_temp_ac_dryer_on(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test if target temperature turn ac dryer on (needs initial hva cmode DRY)."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, False)
@@ -552,7 +548,7 @@ async def test_set_target_temp_ac_dryer_on(
 
 
 async def test_temp_change_ac_dry_off_within_tolerance(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test if humidity change doesn't turn ac dryer off within tolerance."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, True)
@@ -568,7 +564,7 @@ async def test_temp_change_ac_dry_off_within_tolerance(
 
 
 async def test_set_temp_change_ac_dry_off_outside_tolerance(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test if humidity change turn ac dryer off outside tolerance."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, True)
@@ -583,7 +579,7 @@ async def test_set_temp_change_ac_dry_off_outside_tolerance(
 
 
 async def test_temp_change_ac_dryer_on_within_tolerance(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test if humidity change doesn't turn ac dryer on within tolerance."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, False)
@@ -594,7 +590,7 @@ async def test_temp_change_ac_dryer_on_within_tolerance(
 
 
 async def test_temp_change_ac_on_outside_tolerance(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test if humidity change turn ac dryer on."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, False)
@@ -610,7 +606,7 @@ async def test_temp_change_ac_on_outside_tolerance(
 
 
 async def test_running_when_operating_mode_is_off_2(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test that the humidifier switch turns off when enabled is set False."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, True)
@@ -624,7 +620,7 @@ async def test_running_when_operating_mode_is_off_2(
 
 
 async def test_no_state_change_when_operation_mode_off_2(
-    hass: HomeAssistant, setup_comp_heat_ac_cool_dry  # noqa: F811
+    hass: HomeAssistant, setup_comp_heat_ac_cool_dry
 ) -> None:
     """Test that the switch doesn't turn on when enabled is False."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, False)
@@ -670,7 +666,7 @@ async def test_temp_change_ac_dry_trigger_on_long_enough(
     hass: HomeAssistant,
     freezer: FrozenDateTimeFactory,
     sw_on,
-    setup_comp_heat_ac_cool_dry_cycle,  # noqa: F811
+    setup_comp_heat_ac_cool_dry_cycle,
 ) -> None:
     """Test if humidity change turn dryer on."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, sw_on)
@@ -719,7 +715,7 @@ async def test_time_change_ac_dry_trigger_on_long_enough(
     hass: HomeAssistant,
     freezer: FrozenDateTimeFactory,
     sw_on,
-    setup_comp_heat_ac_cool_dry_cycle,  # noqa: F811
+    setup_comp_heat_ac_cool_dry_cycle,
 ) -> None:
     """Test if humidity change turn dryer on when cycle time is past."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, sw_on)
@@ -754,7 +750,7 @@ async def test_time_change_ac_dry_trigger_on_long_enough(
 @pytest.mark.parametrize("sw_on", [True, False])
 @pytest.mark.parametrize("expected_lingering_timers", [True])
 async def test_mode_change_ac_dry_trigger_off_not_long_enough(
-    hass: HomeAssistant, sw_on, setup_comp_heat_ac_cool_dry_cycle  # noqa: F811
+    hass: HomeAssistant, sw_on, setup_comp_heat_ac_cool_dry_cycle
 ) -> None:
     """Test if mode change turns dryer despite minimum cycle."""
     calls = setup_switch_dual(hass, common.ENT_DRYER, False, sw_on)
@@ -807,7 +803,7 @@ async def setup_comp_heat_ac_cool_dry_stale_duration(hass: HomeAssistant) -> Non
 async def test_sensor_unknown_secure_ac_dry_off_outside_stale_duration(
     hass: HomeAssistant,
     sensor_state,
-    setup_comp_heat_ac_cool_dry_stale_duration,  # noqa: F811
+    setup_comp_heat_ac_cool_dry_stale_duration,
 ) -> None:
     """Test if sensor unavailable for defined delay turns off AC."""
     setup_humidity_sensor(hass, 70)
@@ -850,7 +846,7 @@ async def test_sensor_unknown_secure_ac_dry_off_outside_stale_duration(
 async def test_sensor_unknown_secure_ac_dry_off_outside_stale_duration_reason(
     hass: HomeAssistant,
     sensor_state,
-    setup_comp_heat_ac_cool_dry_stale_duration,  # noqa: F811
+    setup_comp_heat_ac_cool_dry_stale_duration,
 ) -> None:
     """Test if sensor unavailable for defined delay turns off AC."""
 
@@ -1696,7 +1692,7 @@ async def setup_comp_dry_no_target_humidity_yaml(hass: HomeAssistant) -> None:
 
 
 async def test_target_humidity_initialized_without_yaml_config(
-    hass: HomeAssistant, setup_comp_dry_no_target_humidity_yaml  # noqa: F811
+    hass: HomeAssistant, setup_comp_dry_no_target_humidity_yaml
 ) -> None:
     """Test that target_humidity is initialized even when not in YAML config.
 
@@ -1723,7 +1719,7 @@ async def test_target_humidity_initialized_without_yaml_config(
 
 
 async def test_humidity_control_works_after_yaml_setup(
-    hass: HomeAssistant, setup_comp_dry_no_target_humidity_yaml  # noqa: F811
+    hass: HomeAssistant, setup_comp_dry_no_target_humidity_yaml
 ) -> None:
     """Test that humidity control works after YAML setup without target_humidity.
 

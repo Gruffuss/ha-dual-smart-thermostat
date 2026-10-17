@@ -1,6 +1,6 @@
+from collections.abc import Callable
 from datetime import timedelta
 import logging
-from typing import Callable
 
 from homeassistant.components.climate import HVACAction, HVACMode
 from homeassistant.components.valve import DOMAIN as VALVE_DOMAIN, ValveEntityFeature

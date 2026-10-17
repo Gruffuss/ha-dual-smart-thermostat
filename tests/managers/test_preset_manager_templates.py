@@ -102,10 +102,8 @@ class TestPresetManagerTemplateIntegration:
         setup_template_test_entities
 
         preset_env = PresetEnv(
-            **{
-                "target_temp_low": "{{ states('sensor.outdoor_temp') | float - 2 }}",
-                "target_temp_high": "{{ states('sensor.outdoor_temp') | float + 4 }}",
-            }
+            target_temp_low="{{ states('sensor.outdoor_temp') | float - 2 }}",
+            target_temp_high="{{ states('sensor.outdoor_temp') | float + 4 }}",
         )
 
         config = {}

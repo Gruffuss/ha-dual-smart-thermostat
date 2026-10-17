@@ -142,7 +142,7 @@ async def test_unique_id(
     assert entry.unique_id == unique_id
 
 
-async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:  # noqa: F811
+async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:
     """Test the setting of defaults to unknown."""
     heater_switch = "input_boolean.test"
     cooler_switvh = "input_boolean.test_cooler"
@@ -166,7 +166,7 @@ async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:  # noqa: 
 
 async def test_setup_gets_current_temp_from_sensor(
     hass: HomeAssistant,
-) -> None:  # noqa: F811
+) -> None:
     """Test that current temperature is updated on entity addition."""
     hass.config.units = METRIC_SYSTEM
     setup_sensor(hass, 18)
@@ -339,7 +339,7 @@ async def test_presets_use_case_80(
 @pytest.mark.parametrize("expected_lingering_timers", [True])
 async def test_presets_use_case_150(
     hass: HomeAssistant, setup_comp_1  # noqa: F811
-) -> None:  # noqa: F811
+) -> None:
     """Test that current temperature is updated on entity addition."""
     hass.config.units = METRIC_SYSTEM
     setup_sensor(hass, 18)
@@ -372,7 +372,7 @@ async def test_presets_use_case_150(
 
 async def test_presets_use_case_150_2(
     hass: HomeAssistant, setup_comp_1  # noqa: F811
-) -> None:  # noqa: F811
+) -> None:
     """Test that current temperature is updated on entity addition."""
     hass.config.units = METRIC_SYSTEM
 
@@ -521,7 +521,7 @@ async def test_get_hvac_modes_heat_cool_2(
 
 
 # async def test_get_hvac_modes_heat_cool_if_heat_cool_mode_off(
-#     hass: HomeAssistant, setup_comp_heat_cool_3  # noqa: F811
+#     hass: HomeAssistant, setup_comp_heat_cool_3
 # ) -> None:
 #     """Test that the operation list returns the correct modes."""
 #     await async_setup_component(
@@ -865,9 +865,7 @@ async def test_set_heat_cool_fan_preset_mode_and_restore_prev_temp(
     "preset",
     [PRESET_NONE, PRESET_AWAY],
 )
-async def test_set_heat_cool_fan_restore_state(
-    hass: HomeAssistant, preset  # noqa: F811
-) -> None:
+async def test_set_heat_cool_fan_restore_state(hass: HomeAssistant, preset) -> None:
     common.mock_restore_cache(
         hass,
         (
@@ -914,7 +912,7 @@ async def test_set_heat_cool_fan_restore_state(
 
 
 # async def test_set_heat_cool_fan_restore_state_check_reason(
-#     hass: HomeAssistant,  # noqa: F811
+#     hass: HomeAssistant,
 # ) -> None:
 #     common.mock_restore_cache(
 #         hass,
@@ -1003,7 +1001,7 @@ async def test_set_heat_cool_fan_restore_state(
     ],
 )
 async def test_set_heat_cool_fan_restore_state_2(
-    hass: HomeAssistant, preset, hvac_mode  # noqa: F811
+    hass: HomeAssistant, preset, hvac_mode
 ) -> None:
     common.mock_restore_cache(
         hass,
@@ -2988,7 +2986,7 @@ async def test_hvac_mode_cool(hass: HomeAssistant, setup_comp_1):  # noqa: F811
 
 async def test_hvac_mode_cool_hvac_action_reason(
     hass: HomeAssistant, setup_comp_1  # noqa: F811
-):  # noqa: F811
+):
     """Test thermostat sets hvac action reason after startup in cool mode."""
     heater_switch = "input_boolean.heater"
     cooler_switch = "input_boolean.cooler"

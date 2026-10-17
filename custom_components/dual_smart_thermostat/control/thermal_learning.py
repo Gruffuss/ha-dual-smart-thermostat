@@ -163,10 +163,9 @@ class HeatingPowerTracker:
             self.start_temp is not None
             and self.end_temp is not None
             and cur_temp < self.end_temp
-        ):
-            finalize = True
-        elif self.end_ts is not None and (now - self.end_ts) > timedelta(
-            minutes=_TIMEOUT_MIN
+        ) or (
+            self.end_ts is not None
+            and (now - self.end_ts) > timedelta(minutes=_TIMEOUT_MIN)
         ):
             finalize = True
 

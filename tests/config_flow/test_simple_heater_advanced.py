@@ -51,7 +51,7 @@ async def test_simple_heater_advanced_settings_config_flow(
     schema_dict = {field.schema: field for field in schema.schema}
 
     # Check that the fields are in the schema
-    field_names = [str(field) for field in schema_dict.keys()]
+    field_names = [str(field) for field in schema_dict]
 
     assert any(CONF_NAME in field for field in field_names)
     assert any(CONF_HEATER in field for field in field_names)

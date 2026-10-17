@@ -38,7 +38,6 @@ class ControlableHVACDevice(ABC):
     @property
     def hvac_action(self) -> HVACAction:
         """concrete implementations should return the current hvac action of the device."""
-        pass
 
     @hvac_mode.setter
     def hvac_mode(self, hvac_mode: HVACMode):
@@ -71,7 +70,6 @@ class ControlableHVACDevice(ABC):
     def on_entity_state_change(self, entity_id: str, new_state: State) -> None:
         """Handle entity state changes. Currently only for specific cases when the devices needs
         to be updated based on the state of another entity."""
-        pass
 
     @callback
     def call_on_remove_callbacks(self) -> None:
@@ -96,7 +94,6 @@ class ControlableHVACDevice(ABC):
     @abstractmethod
     async def async_turn_on(self):
         """Concrete implementations should turn the device on."""
-        pass
 
     @abstractmethod
     async def async_turn_off(self):
@@ -138,8 +135,6 @@ class ControlableHVACDevice(ABC):
 
     def on_entity_state_changed(self, entity_id: str, new_state: State) -> None:
         """Handle entity state changes. Currently only for specific cases when the devices needs"""
-        pass
 
     def on_target_temperature_change(self, temperatures: TargetTemperatures) -> None:
         """Handle target temperature changes."""
-        pass

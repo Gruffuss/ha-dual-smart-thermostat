@@ -68,7 +68,7 @@ class TargeTempEnv:
     temperature: float | None
 
     def __init__(self, **kwargs) -> None:
-        super(TargeTempEnv, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.temperature = kwargs.get(ATTR_TEMPERATURE) or None
 
 
@@ -77,7 +77,7 @@ class RangeTempEnv:
     target_temp_high: float | None
 
     def __init__(self, **kwargs) -> None:
-        super(RangeTempEnv, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.target_temp_low = kwargs.get(ATTR_TARGET_TEMP_LOW) or None
         self.target_temp_high = kwargs.get(ATTR_TARGET_TEMP_HIGH) or None
 
@@ -87,7 +87,7 @@ class FloorTempLimitEnv:
     max_floor_temp: float | None
 
     def __init__(self, **kwargs) -> None:
-        super(FloorTempLimitEnv, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         _LOGGER.debug(f"FloorTempLimitEnv kwargs: {kwargs}")
         self.min_floor_temp = kwargs.get(CONF_MIN_FLOOR_TEMP) or None
         self.max_floor_temp = kwargs.get(CONF_MAX_FLOOR_TEMP) or None
@@ -95,7 +95,7 @@ class FloorTempLimitEnv:
 
 class TempEnv(TargeTempEnv, RangeTempEnv, FloorTempLimitEnv):
     def __init__(self, **kwargs) -> None:
-        super(TempEnv, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         _LOGGER.debug(f"TempEnv kwargs: {kwargs}")
 
 
@@ -103,7 +103,7 @@ class HumidityEnv:
     humidity: float | None
 
     def __init__(self, **kwargs) -> None:
-        super(HumidityEnv, self).__init__()
+        super().__init__()
         _LOGGER.debug(f"HumidityEnv kwargs: {kwargs}")
         self.humidity = kwargs.get(ATTR_HUMIDITY) or None
 
@@ -119,7 +119,7 @@ class PresetEnv(TempEnv, HumidityEnv):
             set()
         )  # entity_ids referenced in templates
 
-        super(PresetEnv, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         _LOGGER.debug(f"kwargs: {kwargs}")
 
         # Process temperature fields for template detection

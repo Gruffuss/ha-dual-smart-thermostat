@@ -26,7 +26,6 @@ class OpeningsSteps:
 
     def __init__(self):
         """Initialize openings steps handler."""
-        pass
 
     async def _call_next_step(self, next_step_handler):
         """Call next_step_handler and await only if it returns an awaitable.
