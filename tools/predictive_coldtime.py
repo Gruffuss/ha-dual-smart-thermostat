@@ -260,24 +260,29 @@ def no_settings():
     return None
 
 
-def exact_pwm():
-    """Other cause: round plan_pwm to microseconds, so a planned 20 of 30 stays 20.
+def pre_fix_pwm():
+    """Reinstate the float collapse that plan_pwm had before its fix.
 
     100 * 20 / 30 percent of 1800 s is 1200.0000000000002 s, leaving
-    599.9999999999998 s off, which the 600 s minimum-off rule collapses to a
-    full 30-minute cycle.
+    599.9999999999998 s off, which a strict comparison with the 600 s minimum
+    collapses to a full 30-minute cycle. Reproduces runs made before the fix;
+    the earlier "exact PWM" rows are the fix itself.
     """
     from tests.unit import test_predictive_controller
 
     def wrap(original):
-        def plan_pwm(duty_pct, cycle_seconds, min_segment_seconds=0.0):
+        def plan_pwm(
+            duty_pct, cycle_seconds, min_segment_seconds=0.0, min_off_seconds=None
+        ):
             raw = original(duty_pct, cycle_seconds)
-            on, off = round(raw.on_seconds, 6), round(raw.off_seconds, 6)
-            if min_segment_seconds > 0 and 0 < on < min_segment_seconds:
-                on, off = 0.0, cycle_seconds
-            elif min_segment_seconds > 0 and 0 < off < min_segment_seconds:
-                on, off = cycle_seconds, 0.0
-            return type(raw)(on, off)
+            min_off = (
+                min_segment_seconds if min_off_seconds is None else min_off_seconds
+            )
+            if 0 < raw.on_seconds < min_segment_seconds:
+                return type(raw)(0.0, cycle_seconds)
+            if 0 < raw.off_seconds < min_off:
+                return type(raw)(cycle_seconds, 0.0)
+            return raw
 
         return plan_pwm
 
@@ -461,9 +466,8 @@ VARIANTS = {
     "c2_hold_oracle": hold_oracle,
     "c2_k_oracle": no_loss_learning,
     **{name: no_settings for name in SETTINGS if name.startswith("c3_")},
-    "x_exact_pwm": exact_pwm,
+    "x_pre_fix_pwm": pre_fix_pwm,
     "x_bank_full_cycle": bank_counts_full_cycle,
-    "x_bank_full_cycle_exact_pwm": both(bank_counts_full_cycle, exact_pwm),
     "x_bumpless_demotion": bumpless_demotion,
     "x_integrate_while_predictive": integrate_while_predictive,
     "x_integral_transplant": integral_transplant,

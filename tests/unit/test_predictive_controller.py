@@ -56,14 +56,13 @@ class Driver:
         elapsed = inp.now_min - self.start if self.start is not None else None
         if restart or elapsed is None or elapsed < 0 or elapsed + 0.05 >= cycle:
             on = self.ctl.plan(replace(inp, now_min=inp.now_min + self.plan_offset))
-            # plan_pwm cannot express different on/off minima. Keep its raw
-            # durations, then apply the same collapse rule to each side.
-            pwm = plan_pwm(100 * on / cycle, 60 * cycle)
+            pwm = plan_pwm(
+                100 * on / cycle,
+                60 * cycle,
+                60 * settings.min_on_minutes,
+                min_off_seconds=60 * settings.min_off_minutes,
+            )
             self.on = pwm.on_seconds / 60
-            if 0 < pwm.on_seconds < 60 * settings.min_on_minutes:
-                self.on = 0
-            elif 0 < pwm.off_seconds < 60 * settings.min_off_minutes:
-                self.on = cycle
             self.start = inp.now_min
         self.valve = (
             inp.demand
@@ -103,6 +102,20 @@ def test_driver_and_loss_learner_respect_asymmetric_minimum_off(minimum, expecte
     delivered = sum(driver.tick(inputs(minute, temp=24)) for minute in range(30))
     assert delivered == expected_on
     assert ctl.learner.valve_on_count == expected_on
+
+
+def test_planned_twenty_of_thirty_runs_twenty_with_minimum_off():
+    """20 of 30 minutes leaves exactly the 10-minute minimum off, not less."""
+    ctl = controller("off", kp=0, ki=0, k_loss=100 * 20 / 30 / 24)
+    driver = Driver(ctl)
+    delivered = sum(driver.tick(inputs(minute, temp=24)) for minute in range(30))
+    assert ctl.settings.min_off_minutes == 10
+    assert delivered == 20
+    assert ctl.learner.valve_on_count == 20
+    with patch.object(heating, "plan_cycle", return_value=(20, [])):
+        ctl = controller("on")
+        driver = Driver(ctl)
+        assert sum(driver.tick(inputs(minute)) for minute in range(30)) == 20
 
 
 @pytest.mark.parametrize("minimum", [0, 5])

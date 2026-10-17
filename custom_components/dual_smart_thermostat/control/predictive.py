@@ -285,18 +285,14 @@ class PredictiveController:
             return
         # A plan may read the clock just after the minute it completes.
         elapsed = max(0.0, inp.now_min - self._cycle_start)
+        # Loss learning counts the same actuator command as the device.
         pwm = plan_pwm(
             100 * self._on_minutes / self.bank.cycle_time,
             60 * self.bank.cycle_time,
+            60 * self.bank.min_on_time,
+            min_off_seconds=60 * self.settings.min_off_minutes,
         )
-        # plan_pwm has one symmetric minimum. Apply the two sides separately
-        # so loss learning counts the same actuator command as the device.
-        on_seconds = pwm.on_seconds
-        if 0 < on_seconds < 60 * self.bank.min_on_time:
-            on_seconds = 0
-        elif 0 < pwm.off_seconds < 60 * self.settings.min_off_minutes:
-            on_seconds = 60 * self.bank.cycle_time
-        valve = elapsed + 0.05 < on_seconds / 60
+        valve = elapsed + 0.05 < pwm.on_seconds / 60
         update = self.learner.sample(
             True, self._setpoint, inp.temp, finite_float(inp.outdoor), valve
         )
