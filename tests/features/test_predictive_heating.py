@@ -93,13 +93,28 @@ async def test_setpoint_change_restarts_cycle(hass, freezer):
 
 
 @pytest.mark.asyncio
+async def test_cold_floor_waits_for_three_valid_minutes(hass, freezer):
+    """One or two low readings must not activate the device's cold-room floor."""
+    await _setup(hass, temperature=23, extra={"predictive_gate": "on"})
+    heater = _heater(hass)
+    setup_sensor(hass, 20)
+    await hass.async_block_till_done()
+    for _ in range(2):
+        await _tick(hass, freezer)
+        assert heater._ctl._last_inputs.valid
+        assert heater._ctl.mode == "predictive"
+        assert heater._ctl.demoted_until_min is None
+        assert heater.duty_cycle < 100
+
+
+@pytest.mark.asyncio
 async def test_cold_floor_restarts_cycle_full_on(hass, freezer):
     await _setup(hass, temperature=23, extra={"predictive_gate": "on"})
     heater = _heater(hass)
     assert heater is not None
     setup_sensor(hass, 20)
     await hass.async_block_till_done()
-    await _tick(hass, freezer)
+    await _tick(hass, freezer, 3)
     assert heater.duty_cycle == 100
     assert heater._ctl.mode == "fallback"
     assert heater._ctl.demoted_until_min > 1400
@@ -455,7 +470,7 @@ async def test_store_delayed_save_and_immediate_gate_save(hass, freezer, hass_st
     assert key in hass_storage, "minute callbacks must not perpetually postpone saving"
     setup_sensor(hass, 20)
     await hass.async_block_till_done()
-    await _tick(hass, freezer)
+    await _tick(hass, freezer, 3)
     assert hass_storage[key]["data"]["mode"] == "fallback"
     assert hass_storage[key]["data"]["demoted_until"] is not None
 
@@ -591,9 +606,23 @@ async def test_cycle_boundary_saves_gate_switch_immediately(
     assert hass_storage[key]["data"]["mode"] == "predictive"
     setup_sensor(hass, 20)
     await hass.async_block_till_done()
-    await _heater(hass)._pwm.async_restart()
-    await hass.async_block_till_done()
+    await _tick(hass, freezer, 3)
     assert hass_storage[key]["data"]["mode"] == "fallback"
+    # Let the cold-floor cooldown expire with a warm room, then consume the
+    # promotion at a PWM restart before dispatching another minute callback.
+    setup_sensor(hass, 23)
+    await hass.async_block_till_done()
+    heater = _heater(hass)
+    freezer.tick(timedelta(minutes=1441))
+    with (
+        patch.object(heater._ctl, "minute", wraps=heater._ctl.minute) as minute,
+        patch.object(heater, "async_save", wraps=heater.async_save) as save,
+    ):
+        await heater._pwm.async_restart()
+        await hass.async_block_till_done()
+        minute.assert_not_called()
+        save.assert_awaited_once()
+    assert hass_storage[key]["data"]["mode"] == "predictive"
 
 
 @pytest.mark.parametrize(
