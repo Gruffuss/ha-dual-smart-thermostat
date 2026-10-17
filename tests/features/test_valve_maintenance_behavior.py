@@ -140,3 +140,55 @@ def test_maintenance_yaml_rejects_invalid_hold(value):
                 "valve_maintenance_open_minutes": value,
             }
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["tpi", "ai"])
+async def test_maintenance_suspends_independent_pwm_timers(hass, freezer, mode):
+    """An idle PWM cycle must not close the valve during its exercise hold."""
+    calls = setup_switch(hass, False)
+    hass.states.async_set(common.ENT_SENSOR, "23")
+
+    async def switch(call):
+        calls.append(call)
+        hass.states.async_set(
+            common.ENT_SWITCH, "on" if call.service == "turn_on" else "off"
+        )
+
+    hass.services.async_register("homeassistant", "turn_on", switch)
+    hass.services.async_register("homeassistant", "turn_off", switch)
+    assert await async_setup_component(
+        hass,
+        "climate",
+        {
+            "climate": {
+                "platform": DOMAIN,
+                "name": "test",
+                "heater": common.ENT_SWITCH,
+                "target_sensor": common.ENT_SENSOR,
+                "initial_hvac_mode": HVACMode.HEAT,
+                "target_temp": 21,
+                "heater_control_mode": mode,
+                "pwm_cycle_duration": 60,
+                "min_cycle_duration": {"seconds": 0},
+                "valve_maintenance_open_minutes": 2,
+            }
+        },
+    )
+    await hass.async_block_till_done()
+    thermostat = hass.data["entity_components"]["climate"].get_entity("climate.test")
+    assert thermostat._find_pwm_heater()._pwm.running
+    assert hass.states.is_state(common.ENT_SWITCH, "off")
+    calls.clear()
+    task = asyncio.create_task(thermostat.async_run_valve_maintenance())
+    try:
+        await flush()
+        assert hass.states.is_state(common.ENT_SWITCH, "on")
+        await tick(hass, freezer, 60)
+        assert [call.service for call in calls] == ["turn_on"]
+        await tick(hass, freezer, 60)
+        await task
+        assert [call.service for call in calls] == ["turn_on", "turn_off"]
+    finally:
+        await thermostat.async_remove()
+        await task

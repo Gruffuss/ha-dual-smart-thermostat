@@ -2138,6 +2138,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         heater = self._find_pwm_heater()
         if isinstance(heater, PredictiveHeaterDevice):
             heater.set_maintenance(active)
+        elif isinstance(heater, PwmHeaterDevice) and active:
+            heater._pwm.cancel()
 
     async def _async_presence_changed(
         self, event: Event[EventStateChangedData]
