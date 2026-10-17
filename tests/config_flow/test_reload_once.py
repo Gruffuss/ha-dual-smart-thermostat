@@ -13,10 +13,14 @@ from tests import common, setup_sensor, setup_switch
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("flow_type", ["reconfigure", "options"])
-async def test_configuration_change_reloads_platform_once(hass, flow_type):
+@pytest.mark.parametrize("control_mode", ["ai", "predictive"])
+async def test_configuration_change_reloads_platform_once(
+    hass, flow_type, control_mode
+):
     setup_switch(hass, False)
     setup_sensor(hass, 21)
     hass.states.async_set(common.ENT_COOLER, "off")
+    hass.states.async_set("sensor.outdoor", "5")
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -25,9 +29,11 @@ async def test_configuration_change_reloads_platform_once(hass, flow_type):
             "heater": common.ENT_SWITCH,
             "cooler": common.ENT_COOLER,
             "target_sensor": common.ENT_SENSOR,
-            "heater_control_mode": "ai",
+            "heater_control_mode": control_mode,
+            "outside_sensor": "sensor.outdoor",
             "target_temp": 21,
         },
+        options={"predictive_kp": 42, "target_temp": 23},
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -53,7 +59,7 @@ async def test_configuration_change_reloads_platform_once(hass, flow_type):
                     "cooler": common.ENT_COOLER,
                     "target_sensor": common.ENT_SENSOR,
                     "advanced_settings": {
-                        "heater_control_mode": "ai",
+                        "heater_control_mode": control_mode,
                         "pwm_cycle_duration": 1800,
                     },
                 },
@@ -63,6 +69,8 @@ async def test_configuration_change_reloads_platform_once(hass, flow_type):
             assert result["type"] == "abort"
             assert result["reason"] == "reconfigure_successful"
             assert entry.data["pwm_cycle_duration"] == 1800
+            assert entry.data["target_temp"] == 23
+            assert entry.options == {}
         else:
             manager = hass.config_entries.options
             result = await manager.async_init(entry.entry_id)
@@ -73,3 +81,4 @@ async def test_configuration_change_reloads_platform_once(hass, flow_type):
             assert entry.data["target_temp"] == entry.options["target_temp"] == 22
         await hass.async_block_till_done()
         assert setup.call_count == 1
+        assert entry.data["predictive_kp"] == 42

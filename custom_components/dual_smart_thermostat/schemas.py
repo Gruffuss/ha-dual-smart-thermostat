@@ -35,6 +35,7 @@ from .const import (
     CONF_FAN_HOT_TOLERANCE_TOGGLE,
     CONF_FAN_MODE,
     CONF_FAN_ON_WITH_AC,
+    CONF_FAN_ON_WITH_HEATER,
     CONF_FLOOR_SENSOR,
     CONF_HEAT_COOL_MODE,
     CONF_HEAT_PUMP_COOLING,
@@ -61,6 +62,7 @@ from .const import (
     CONF_PREDICTIVE_MAE_OFF,
     CONF_PREDICTIVE_MAE_ON,
     CONF_PREDICTIVE_MIN_VALIDATIONS,
+    CONF_PRESET_AUTO_SAVE,
     CONF_PRESETS,
     CONF_PWM_CYCLE_DURATION,
     CONF_SENSOR,
@@ -81,6 +83,7 @@ from .const import (
     DEFAULT_PREDICTIVE_MAE_OFF,
     DEFAULT_PREDICTIVE_MAE_ON,
     DEFAULT_PREDICTIVE_MIN_VALIDATIONS,
+    DEFAULT_PRESET_AUTO_SAVE,
     DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
     DEFAULT_VALVE_MAINTENANCE_INTERVAL,
@@ -1174,6 +1177,10 @@ def get_fan_schema(hass=None, defaults: dict[str, Any] | None = None):
                 CONF_FAN_ON_WITH_AC, default=defaults.get(CONF_FAN_ON_WITH_AC, True)
             ): get_boolean_selector(),
             vol.Optional(
+                CONF_FAN_ON_WITH_HEATER,
+                default=defaults.get(CONF_FAN_ON_WITH_HEATER, False),
+            ): get_boolean_selector(),
+            vol.Optional(
                 CONF_FAN_AIR_OUTSIDE, default=defaults.get(CONF_FAN_AIR_OUTSIDE, False)
             ): get_boolean_selector(),
             vol.Optional(
@@ -1297,12 +1304,19 @@ def get_advanced_settings_schema(hass=None):
     )
 
 
-def get_preset_selection_schema(defaults: list[str] | None = None):
+def get_preset_selection_schema(
+    defaults: list[str] | None = None,
+    auto_save_default: bool = DEFAULT_PRESET_AUTO_SAVE,
+):
     """Get preset selection schema.
 
     Accepts an optional list of preset keys to pre-select in the multi-select
     selector (used by the options flow to pre-check presets that have
     configuration data stored in the entry).
+
+    ``auto_save_default`` pre-fills the preset auto-save toggle, which controls
+    whether temperature/humidity/fan adjustments made from the UI while a preset
+    is active are written back into that preset (so they don't revert).
     """
     # Load translation labels from cached translations
     labels: dict[str, str] = {}
@@ -1359,6 +1373,9 @@ def get_preset_selection_schema(defaults: list[str] | None = None):
             vol.Optional("presets", default=defaults or []): get_multi_select_selector(
                 options=options
             ),
+            vol.Optional(
+                CONF_PRESET_AUTO_SAVE, default=auto_save_default
+            ): selector.BooleanSelector(),
         }
     )
 

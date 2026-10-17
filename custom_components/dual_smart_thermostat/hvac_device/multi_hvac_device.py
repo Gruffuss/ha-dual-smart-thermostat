@@ -9,7 +9,7 @@ from ..hvac_device.controllable_hvac_device import ControlableHVACDevice
 from ..hvac_device.hvac_device import HVACDevice
 from ..hvac_device.predictive_heater_device import PredictiveHeaterDevice
 from ..hvac_device.pwm_heater_device import PwmHeaterDevice
-from ..managers.environment_manager import EnvironmentManager
+from ..managers.environment_manager import EnvironmentManager, TargetTemperatures
 from ..managers.feature_manager import FeatureManager
 from ..managers.opening_manager import OpeningManager
 
@@ -47,6 +47,32 @@ class MultiHvacDevice(HVACDevice, ControlableHVACDevice):
     def set_context(self, context: Context):
         for device in self.hvac_devices:
             device.set_context(context)
+
+    # override
+    def reset_hvac_action_reason(self) -> None:
+        """Clear the reason on every sub-device as well as our own."""
+        super().reset_hvac_action_reason()
+        for device in self.hvac_devices:
+            device.reset_hvac_action_reason()
+
+    # override
+    def on_target_temperature_change(self, temperatures: TargetTemperatures) -> None:
+        """Forward the new target to every sub-device.
+
+        The base implementation is a no-op, so without this a sub-device that
+        acts on a target change - a wrapped climate entity pushing the setpoint
+        to the real AC - never heard about it, and only picked the value up on
+        its next off -> on transition.
+        """
+        super().on_target_temperature_change(temperatures)
+        for device in self.hvac_devices:
+            device.on_target_temperature_change(temperatures)
+
+    # override
+    async def async_turn_off_unless_used(self, in_use: set[str]) -> None:
+        """Push the check down to the sub-devices so shared ones are spared."""
+        for device in self.hvac_devices:
+            await device.async_turn_off_unless_used(in_use)
 
     @callback
     def on_entity_state_changed(self, entity_id: str, new_state: State) -> None:
@@ -193,14 +219,25 @@ class MultiHvacDevice(HVACDevice, ControlableHVACDevice):
             _LOGGER.warning("Invalid HVAC mode: %s", self._hvac_mode)
             return
 
+        # Stop the devices that do not handle this mode before running the one
+        # that does, and spare any entity the handling device also owns: a
+        # heater wrapper and a cooler wrapper may hold the same fan, and
+        # stopping one would switch that fan off (#637).
+        in_use = {
+            entity_id
+            for device in self.hvac_devices
+            if self.hvac_mode in device.hvac_modes
+            for entity_id in device.get_device_ids()
+        }
+
+        for device in self.hvac_devices:
+            if self.hvac_mode not in device.hvac_modes and device.is_active:
+                await device.async_turn_off_unless_used(in_use)
+
         for device in self.hvac_devices:
             if self.hvac_mode in device.hvac_modes:
                 await device.async_control_hvac(time, force)
                 self._hvac_action_reason = device.HVACActionReason
-            elif device.is_active:
-                await device.async_turn_off()
-
-            # self._hvac_action_reason = device.HVACActionReason
 
     async def async_on_startup(self, async_write_ha_state_cb: Callable = None):
         self._async_write_ha_state_cb = async_write_ha_state_cb

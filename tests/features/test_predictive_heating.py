@@ -25,6 +25,17 @@ from custom_components.dual_smart_thermostat.const import DOMAIN
 from tests import common, setup_sensor, setup_switch, setup_valve
 
 
+@pytest.fixture(autouse=True)
+async def cleanup_predictive_entities(hass):
+    """Remove YAML entities so the harness can verify their timers are cancelled."""
+    yield
+    component = hass.data.get("entity_components", {}).get("climate")
+    if component is not None:
+        for entity in tuple(component.entities):
+            await entity.async_remove()
+        await hass.async_block_till_done()
+
+
 async def _setup(hass, *, extra=None, temperature=21, units=METRIC_SYSTEM):
     hass.config.units = units
     calls = setup_switch(hass, False)

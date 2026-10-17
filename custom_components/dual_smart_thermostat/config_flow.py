@@ -23,10 +23,12 @@ from .const import (
     CONF_HEATER,
     CONF_HUMIDITY_SENSOR,
     CONF_PRECISION,
+    CONF_PRESET_AUTO_SAVE,
     CONF_PRESETS,
     CONF_SENSOR,
     CONF_SYSTEM_TYPE,
     CONF_TEMP_STEP,
+    DEFAULT_PRESET_AUTO_SAVE,
     DOMAIN,
     SYSTEM_TYPE_SIMPLE_HEATER,
     SystemType,
@@ -198,9 +200,16 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         # Get the existing config entry being reconfigured
         entry = self._get_reconfigure_entry()
 
-        # Initialize collected_config with current data
-        # This ensures all existing settings are preserved unless changed
-        self.collected_config = dict(entry.data)
+        # Initialize collected_config with the entry's effective configuration.
+        # climate.py runs on {**entry.data, **entry.options}, and finishing this
+        # flow clears entry.options so it can no longer shadow the fresh
+        # entry.data (see _async_finish_flow). Seeding from entry.data alone
+        # would therefore drop everything the user configured through the
+        # options flow - presets, openings, advanced settings - and silently
+        # replace it with whatever stale value entry.data still held. Merge in
+        # the same order the runtime does so the wizard pre-fills what is
+        # actually in effect, and carries it back into entry.data on save.
+        self.collected_config = {**entry.data, **entry.options}
 
         # Normalize config values from storage (convert dict timedelta back to timedelta)
         self.collected_config = self._normalize_config_from_storage(
@@ -724,7 +733,12 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="preset_selection",
-            data_schema=get_preset_selection_schema(defaults=defaults),
+            data_schema=get_preset_selection_schema(
+                defaults=defaults,
+                auto_save_default=self.collected_config.get(
+                    CONF_PRESET_AUTO_SAVE, DEFAULT_PRESET_AUTO_SAVE
+                ),
+            ),
         )
 
     async def async_step_presets(
@@ -885,6 +899,15 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
             self.hass.config_entries.async_update_entry(
                 self._get_reconfigure_entry(),
                 data=cleaned_config,
+                # Fix for https://github.com/swingerman/ha-dual-smart-thermostat/issues/631:
+                # entry.options takes precedence over entry.data at runtime
+                # (see climate.py's {**data, **options} merge). If Options
+                # was ever saved previously, its frozen snapshot silently
+                # shadows every field reconfigure just updated in entry.data
+                # — including target_sensor — with no error shown. Clear the
+                # stale options so a successful reconfigure actually takes
+                # effect.
+                options={},
             )
             return self.async_abort(reason="reconfigure_successful")
         else:

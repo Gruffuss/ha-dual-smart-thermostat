@@ -199,6 +199,54 @@ async def test_wrapped_climate_passes_target_temperature(hass: HomeAssistant) ->
 
 
 @pytest.mark.asyncio
+async def test_wrapped_climate_syncs_target_temperature_while_running(
+    hass: HomeAssistant,
+) -> None:
+    """Changing the target while the AC is already cooling reaches the AC.
+
+    The only path that pushed a setpoint through was _async_turn_on_entity,
+    i.e. an off -> on transition, so an AC that was already on and stayed on
+    kept its old setpoint no matter what the thermostat was set to. Two things
+    combined to produce that: async_set_temperature never called
+    on_target_temperature_change on the single-target branch at all, and
+    MultiHvacDevice (the HeaterCoolerDevice this config builds) did not forward
+    that notification to its sub-devices.
+
+    Driven through the entity object rather than climate.set_temperature,
+    because the fake AC handler intercepts that service for the whole domain.
+    """
+    calls = await _setup_full(hass, target_temp=24)
+
+    # Room is hot -> the AC turns on and receives the initial setpoint.
+    setup_sensor(hass, 28)
+    await hass.async_block_till_done()
+    assert hass.states.get(WRAPPED_AC).state == HVACMode.COOL
+
+    ac_temp_calls = [
+        c
+        for c in calls[SERVICE_SET_TEMPERATURE]
+        if c.data.get(ATTR_ENTITY_ID) == WRAPPED_AC
+    ]
+    before = len(ac_temp_calls)
+
+    # Lower the target while the AC is still running.
+    thermostat = hass.data["entity_components"][CLIMATE].get_entity("climate.test")
+    await thermostat.async_set_temperature(temperature=19)
+    await hass.async_block_till_done()
+
+    ac_temp_calls = [
+        c
+        for c in calls[SERVICE_SET_TEMPERATURE]
+        if c.data.get(ATTR_ENTITY_ID) == WRAPPED_AC
+    ]
+    assert len(ac_temp_calls) > before, (
+        "Expected a new climate.set_temperature on the wrapped AC after the "
+        "target changed while it was running"
+    )
+    assert ac_temp_calls[-1].data[ATTR_TEMPERATURE] == 19
+
+
+@pytest.mark.asyncio
 async def test_wrapped_climate_turns_off_when_goal_reached(
     hass: HomeAssistant,
 ) -> None:

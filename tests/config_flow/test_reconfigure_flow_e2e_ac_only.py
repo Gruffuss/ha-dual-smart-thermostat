@@ -26,6 +26,7 @@ from custom_components.dual_smart_thermostat.const import (
 def ac_only_entry():
     """Create a mock config entry for AC-only system."""
     entry = Mock()
+    entry.options = {}
     entry.entry_id = "test_ac_only"
     entry.data = {
         CONF_NAME: "AC Only",

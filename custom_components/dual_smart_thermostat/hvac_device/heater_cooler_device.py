@@ -44,9 +44,17 @@ class HeaterCoolerDevice(MultiHvacDevice):
             _LOGGER.error("Heater or cooler device is not found")
             return
 
+        # Fan wrappers still own dispatch, but heat/cool decisions and timer
+        # cancellation concern the underlying actuator, not the shared fan.
+        self._heater_actuator = getattr(
+            self.heater_device, "heater_device", self.heater_device
+        )
+        self._cooler_actuator = getattr(
+            self.cooler_device, "cooler_device", self.cooler_device
+        )
         self.set_initial_hvac_mode(initial_hvac_mode)
-        if isinstance(self.heater_device, PredictiveHeaterDevice):
-            self.heater_device.set_sibling_cooler(self.cooler_device)
+        if isinstance(self._heater_actuator, PredictiveHeaterDevice):
+            self._heater_actuator.set_sibling_cooler(self._cooler_actuator)
             self.hvac_mode = self._hvac_mode
 
     def init_hvac_modes(self, hvac_devices: list) -> None:
@@ -73,15 +81,15 @@ class HeaterCoolerDevice(MultiHvacDevice):
         else:
             self.set_sub_devices_hvac_mode(hvac_mode)
         self._hvac_mode = hvac_mode
-        if isinstance(self.heater_device, PredictiveHeaterDevice):
-            self.heater_device.hvac_mode = (
+        if isinstance(self._heater_actuator, PredictiveHeaterDevice):
+            self._heater_actuator.hvac_mode = (
                 HVACMode.HEAT
                 if hvac_mode in (HVACMode.HEAT, HVACMode.HEAT_COOL)
                 else HVACMode.OFF
             )
-            self.heater_device.set_cooler_selected(False)
-            if self.heater_device.hvac_mode == HVACMode.OFF:
-                self.heater_device._pwm.cancel()
+            self._heater_actuator.set_cooler_selected(False)
+            if self._heater_actuator.hvac_mode == HVACMode.OFF:
+                self._heater_actuator._pwm.cancel()
 
     async def async_control_hvac(self, time=None, force: bool = False):
 
@@ -108,7 +116,7 @@ class HeaterCoolerDevice(MultiHvacDevice):
         _LOGGER.debug("heater_device.is_active: %s", self.heater_device.is_active)
         _LOGGER.debug("cooler_device.is_active: %s", self.cooler_device.is_active)
 
-        if self.heater_device.is_active:
+        if self._heater_actuator.is_active:
             too_cold = self.environment.is_too_cold("_target_temp_low")
             too_hot = self.environment.is_too_hot("_target_temp_low")
             tolerance_device = ToleranceDevice.HEATER
@@ -119,7 +127,7 @@ class HeaterCoolerDevice(MultiHvacDevice):
                 too_cold,
                 too_hot,
             )
-        elif self.cooler_device.is_active:
+        elif self._cooler_actuator.is_active:
             too_hot = self.environment.is_too_hot("_target_temp_high")
             too_cold = self.environment.is_too_cold("_target_temp_high")
             tolerance_device = ToleranceDevice.COOLER
@@ -150,7 +158,7 @@ class HeaterCoolerDevice(MultiHvacDevice):
     async def _async_control_heat_cool(self, time=None, force=False) -> None:
         """Check if we need to turn heating or cooling on or off."""
 
-        if isinstance(self.heater_device, PredictiveHeaterDevice):
+        if isinstance(self._heater_actuator, PredictiveHeaterDevice):
             await self._async_predictive_heat_cool(time, force)
             return
 
@@ -173,7 +181,7 @@ class HeaterCoolerDevice(MultiHvacDevice):
 
     async def _async_predictive_heat_cool(self, time, force):
         """Let the planner heat inside the band, preserving cooling hysteresis."""
-        heater = self.heater_device
+        heater = self._heater_actuator
         blocked = self.openings.any_opening_open(self.hvac_mode)
         cool = (
             not blocked
@@ -182,22 +190,23 @@ class HeaterCoolerDevice(MultiHvacDevice):
                 self.environment.is_too_hot("_target_temp_high")
                 # An active cooler owns its stop decision, including minimum
                 # cycle duration. Resume predictive heat once it reports off.
-                or self.cooler_device.is_active
+                or self._cooler_actuator.is_active
             )
         )
         heater.set_cooler_selected(cool)
-        await heater.async_control_hvac(time, force)
         if cool:
+            await heater.async_control_hvac(time, force)
             await self.cooler_device.async_control_hvac(time, force)
             self._hvac_action_reason = self.cooler_device.HVACActionReason
         else:
-            if self.cooler_device.is_active and (
+            if self._cooler_actuator.is_active and (
                 not self.environment.is_floor_cold
                 or blocked
-                or not self.cooler_device.hvac_controller.min_cycle_duration
-                or self.cooler_device.hvac_controller.ran_long_enough()
+                or not self._cooler_actuator.hvac_controller.min_cycle_duration
+                or self._cooler_actuator.hvac_controller.ran_long_enough()
             ):
                 await self.cooler_device.async_turn_off()
+            await self.heater_device.async_control_hvac(time, force)
             self._hvac_action_reason = heater.HVACActionReason
 
     async def async_heater_cooler_toggle(self, time=None, force=False) -> None:
@@ -217,8 +226,8 @@ class HeaterCoolerDevice(MultiHvacDevice):
                 await self.heater_device.async_control_hvac(time, force)
                 self._hvac_action_reason = self.heater_device.HVACActionReason
             case ToleranceDevice.COOLER:
-                if isinstance(self.heater_device, PwmHeaterDevice):
-                    await self.heater_device.async_turn_off()
+                if isinstance(self._heater_actuator, PwmHeaterDevice):
+                    await self._heater_actuator.async_turn_off()
                 await self.cooler_device.async_control_hvac(time, force)
                 self._hvac_action_reason = self.cooler_device.HVACActionReason
             case _:
@@ -234,15 +243,19 @@ class HeaterCoolerDevice(MultiHvacDevice):
             await self.heater_device.async_control_hvac(time, force)
             self._hvac_action_reason = self.heater_device.HVACActionReason
             if self.cooler_device.is_active:
-                await self.cooler_device.async_turn_off()
+                await self.cooler_device.async_turn_off_unless_used(
+                    set(self.heater_device.get_device_ids())
+                )
         elif too_hot:
             await self.cooler_device.async_control_hvac(time, force)
             self._hvac_action_reason = self.cooler_device.HVACActionReason
             if (
-                isinstance(self.heater_device, PwmHeaterDevice)
+                isinstance(self._heater_actuator, PwmHeaterDevice)
                 or self.heater_device.is_active
             ):
-                await self.heater_device.async_turn_off()
+                await self.heater_device.async_turn_off_unless_used(
+                    set(self.cooler_device.get_device_ids())
+                )
         else:
             await self.async_turn_off_all(time)
             self._hvac_action_reason = HVACActionReason.TARGET_TEMP_REACHED

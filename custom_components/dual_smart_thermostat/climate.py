@@ -102,6 +102,7 @@ from .const import (
     CONF_FAN_HOT_TOLERANCE_TOGGLE,
     CONF_FAN_MODE,
     CONF_FAN_ON_WITH_AC,
+    CONF_FAN_ON_WITH_HEATER,
     CONF_FLOOR_SENSOR,
     CONF_HEAT_COOL_MODE,
     CONF_HEAT_PUMP_COOLING,
@@ -137,6 +138,7 @@ from .const import (
     CONF_PREDICTIVE_MIN_VALIDATIONS,
     CONF_PRESENCE,
     CONF_PRESENCE_SCOPE,
+    CONF_PRESET_AUTO_SAVE,
     CONF_PRESET_SWITCHES,
     CONF_PRESETS,
     CONF_PRESETS_OLD,
@@ -162,6 +164,7 @@ from .const import (
     DEFAULT_PREDICTIVE_MAE_OFF,
     DEFAULT_PREDICTIVE_MAE_ON,
     DEFAULT_PREDICTIVE_MIN_VALIDATIONS,
+    DEFAULT_PRESET_AUTO_SAVE,
     DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
     DEFAULT_VALVE_MAINTENANCE_INTERVAL,
@@ -191,6 +194,7 @@ from .managers.hvac_power_manager import HvacPowerManager
 from .managers.opening_manager import OpeningHvacModeScope, OpeningManager
 from .managers.presence_manager import PresenceHvacModeScope, PresenceManager
 from .managers.preset_action_manager import PresetActionManager
+from .managers.preset_autosave_manager import PresetAutoSaveManager
 from .managers.preset_manager import PresetManager
 from .managers.valve_maintenance_manager import ValveMaintenanceManager
 from .schemas import validate_heating_control_config, validate_template_or_number
@@ -227,6 +231,7 @@ FAN_MODE_SCHEMA = {
     vol.Optional(CONF_FAN): cv.entity_id,
     vol.Optional(CONF_FAN_MODE): cv.boolean,
     vol.Optional(CONF_FAN_ON_WITH_AC): cv.boolean,
+    vol.Optional(CONF_FAN_ON_WITH_HEATER): cv.boolean,
     vol.Optional(CONF_FAN_HOT_TOLERANCE): vol.All(
         vol.Coerce(float), vol.Range(min=0, min_included=False)
     ),
@@ -345,6 +350,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_TEMP_STEP): vol.In(
             [PRECISION_TENTHS, PRECISION_HALVES, PRECISION_WHOLE]
         ),
+        vol.Optional(
+            CONF_PRESET_AUTO_SAVE, default=DEFAULT_PRESET_AUTO_SAVE
+        ): cv.boolean,
         vol.Optional(CONF_UNIQUE_ID): cv.string,
     }
 ).extend({vol.Optional(v): PRESET_SCHEMA for (k, v) in CONF_PRESETS.items()})
@@ -405,6 +413,7 @@ async def async_setup_entry(
         config,
         config_entry.entry_id,
         async_add_entities,
+        entry_id=config_entry.entry_id,
     )
 
 
@@ -523,6 +532,7 @@ async def _async_setup_config(
     async_add_entities: AddEntitiesCallback,
     *,
     store_key: str | None = None,
+    entry_id: str | None = None,
 ) -> str:
     """Set up the smart dual thermostat platform. Returns the sensor_key."""
 
@@ -577,6 +587,15 @@ async def _async_setup_config(
 
     preset_action_manager = PresetActionManager(hass, feature_manager)
 
+    preset_autosave_manager = PresetAutoSaveManager(
+        hass,
+        config,
+        preset_manager,
+        environment_manager,
+        feature_manager,
+        entry_id=entry_id,
+    )
+
     device_factory = HVACDeviceFactory(
         hass, config, feature_manager, store_key=store_key or unique_id or name
     )
@@ -607,6 +626,7 @@ async def _async_setup_config(
         feature_manager,
         hvac_power_manager,
         presence_manager,
+        preset_autosave_manager=preset_autosave_manager,
         auto_outside_delta_boost=auto_outside_delta_boost,
     )
     sensor_key = unique_id or name
@@ -705,6 +725,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         power_manager: HvacPowerManager,
         presence_manager: PresenceManager,
         *,
+        preset_autosave_manager: PresetAutoSaveManager | None = None,
         auto_outside_delta_boost: float | None = None,
     ) -> None:
         """Initialize the thermostat."""
@@ -720,6 +741,9 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         # preset action manager (fan mode + switches)
         self._preset_actions = preset_action_manager
+
+        # preset auto-save (writes UI adjustments back into the active preset)
+        self._preset_autosave = preset_autosave_manager
 
         # temperature manager
         self.environment = environment_manager
@@ -1658,6 +1682,19 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self.environment.set_temperature_target(temperature)
             self._target_temp = self.environment.target_temp
 
+            # A single-setpoint system (a plain AC, say) took this branch and
+            # never told the device tree the target had moved, so a wrapped
+            # climate entity only ever learned a new setpoint on its next
+            # off -> on transition.
+            self.hvac_device.on_target_temperature_change(temperatures)
+
+        # If a preset is active, fold the new value into it (auto-save) instead
+        # of letting it be treated as a candidate for a *different* preset.
+        if await self._async_autosave_active_preset("temperatures"):
+            await self._async_control_climate(force=True)
+            self.async_write_ha_state()
+            return
+
         # Check for auto-preset selection after setting temperature
         await self._check_auto_preset_selection()
 
@@ -1670,6 +1707,12 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
         self.environment.target_humidity = humidity
         self._target_humidity = self.environment.target_humidity
+
+        # If a preset is active, save the new humidity into it (auto-save).
+        if await self._async_autosave_active_preset("humidity"):
+            await self._async_control_climate(force=True)
+            self.async_write_ha_state()
+            return
 
         # Check for auto-preset selection after setting humidity
         await self._check_auto_preset_selection()
@@ -1694,7 +1737,31 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             return
 
         await fan_device.async_set_fan_mode(fan_mode)
+
+        # If a preset is active, save the selected fan mode into it (auto-save)
+        # so re-applying the preset keeps this speed instead of reverting.
+        if self._preset_autosave is not None and self._preset_autosave.is_active:
+            await self._preset_autosave.async_save_fan_mode(fan_mode)
+
         self.async_write_ha_state()
+
+    async def _async_autosave_active_preset(self, kind: str) -> bool:
+        """Persist the current target(s) into the active preset if auto-save is on.
+
+        ``kind`` selects which values to save ("temperatures" or "humidity").
+        Returns True when a preset was active and auto-save handled the change,
+        signalling the caller to skip auto-preset-selection.
+        """
+        if self._preset_autosave is None or not self._preset_autosave.is_active:
+            return False
+
+        if kind == "humidity":
+            await self._preset_autosave.async_save_humidity()
+        else:
+            await self._preset_autosave.async_save_temperatures()
+
+        # A preset was active: the change belongs to it, not to another preset.
+        return True
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set new swing mode on a wrapped climate entity."""
@@ -1718,8 +1785,6 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         temp_low = temperatures.temp_low
         temp_high = temperatures.temp_high
 
-        self.hvac_device.on_target_temperature_change(temperatures)
-
         if self.features.is_target_mode:
             if temperature is None:
                 return
@@ -1731,6 +1796,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self._target_temp = self.environment.target_temp
             self._target_temp_low = self.environment.target_temp_low
             self._target_temp_high = self.environment.target_temp_high
+
+            self.hvac_device.on_target_temperature_change(temperatures)
 
         elif self.features.is_range_mode:
             self.environment.set_temperature_range(temperature, temp_low, temp_high)
@@ -1748,6 +1815,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self._target_temp = self.environment.target_temp
             self._target_temp_low = self.environment.target_temp_low
             self._target_temp_high = self.environment.target_temp_high
+
+            self.hvac_device.on_target_temperature_change(temperatures)
 
     async def _async_sensor_changed_event(
         self, event: Event[EventStateChangedData]
@@ -1779,6 +1848,12 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
                     self.sensor_entity_id,
                     new_state,
                 )
+                # The reason still held everywhere is the pre-stall one: the
+                # emergency stop turned the device off without a controller
+                # deciding anything. Clear it down the whole device tree so the
+                # control run below starts from a clean slate - if the fresh
+                # reading calls for no action, no stale reason resurfaces.
+                self.hvac_device.reset_hvac_action_reason()
                 self._hvac_action_reason = self.hvac_device.HVACActionReason
                 self._publish_hvac_action_reason(self._hvac_action_reason)
                 self.async_write_ha_state()
@@ -2282,6 +2357,20 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             self.hvac_device.on_entity_state_changed(data["entity_id"], new_state)
             self._refresh_passthrough_support_flags()
 
+        # A standalone fan entity is not reached by the branch above (FanDevice
+        # has no on_entity_state_changed); it may only now have turned up
+        # (upstream issue #636). Only the FAN_MODE bit can have changed, so set
+        # it directly - a full _set_support_flags() would also reset target
+        # temps from presets. This also replays a fan mode that was selected
+        # while the entity was still missing.
+        fan_device = self.features.fan_device
+        if (
+            fan_device is not None
+            and new_state is not None
+            and fan_device.redetect_capabilities(data["entity_id"], new_state)
+        ):
+            self._attr_supported_features |= ClimateEntityFeature.FAN_MODE
+
         self._async_switch_changed(data["old_state"], new_state)
 
     @callback
@@ -2311,7 +2400,10 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
         if new_state is None:
             return
         if old_state is None:
-            self.hass.create_task(self._check_device_initial_state())
+            # async_create_task (eager) not create_task: we are already on the
+            # event loop, and create_task's call_soon_threadsafe defers the run
+            # by a loop iteration, racing whatever the caller does next.
+            self.hass.async_create_task(self._check_device_initial_state())
 
         self.async_write_ha_state()
 
@@ -2324,7 +2416,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             _LOGGER.debug(
                 "Resuming from state. Old state is None, New State: %s", new_state
             )
-            self.hass.create_task(self._async_control_climate())
+            self.hass.async_create_task(self._async_control_climate())
 
         if old_state is not None and new_state is not None:
             _LOGGER.debug(
@@ -2339,7 +2431,7 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
                 STATE_UNAVAILABLE,
                 STATE_UNKNOWN,
             ):
-                self.hass.create_task(self._async_control_climate())
+                self.hass.async_create_task(self._async_control_climate())
 
     @property
     def _is_device_active(self) -> bool:

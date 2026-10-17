@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.config_entries import OptionsFlow
 from homeassistant.data_entry_flow import FlowResult
 
-from ..const import CONF_PRESETS
+from ..const import CONF_PRESET_AUTO_SAVE, CONF_PRESETS, DEFAULT_PRESET_AUTO_SAVE
 from ..schemas import get_preset_selection_schema, get_presets_schema
 from .shared import build_schema_context_from_flow
 
@@ -95,9 +95,19 @@ class PresetsSteps:
         if current_config and isinstance(current_config.get("presets"), list):
             defaults = current_config.get("presets")
 
+        # Pre-fill the auto-save toggle from stored config, falling back to the
+        # value collected earlier in this flow, then the global default.
+        auto_save_default = DEFAULT_PRESET_AUTO_SAVE
+        if current_config and CONF_PRESET_AUTO_SAVE in current_config:
+            auto_save_default = current_config.get(CONF_PRESET_AUTO_SAVE)
+        elif CONF_PRESET_AUTO_SAVE in collected_config:
+            auto_save_default = collected_config.get(CONF_PRESET_AUTO_SAVE)
+
         return flow_instance.async_show_form(
             step_id="preset_selection",
-            data_schema=get_preset_selection_schema(defaults=defaults),
+            data_schema=get_preset_selection_schema(
+                defaults=defaults, auto_save_default=auto_save_default
+            ),
         )
 
     async def async_step_config(

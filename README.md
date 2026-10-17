@@ -173,6 +173,7 @@ Fan speed control works seamlessly with all existing fan-related features:
 
 - **FAN_ONLY Mode**: Fan runs at selected speed in fan-only mode
 - **Fan with AC** (`fan_on_with_ac`): Fan runs at selected speed when AC is active
+- **Fan with heater** (`fan_on_with_heater`): Fan runs alongside the heater/heat pump in heating/cooling modes (e.g. when the fan is the unit's air handler)
 - **Fan Hot Tolerance**: Fan activates at selected speed when temperature tolerance is exceeded
 - **Heat Pump Mode**: Fan speed applies to both heating and cooling operations
 
@@ -772,6 +773,20 @@ When the cooler is a wrapped `climate` entity (see [Climate Entity as Cooler](#c
 
 When you leave the preset (switch to `none` or another preset) the previous fan mode and the prior on/off state of each switch are **restored**. The pre-preset state is persisted, so the restore still works correctly after a Home Assistant restart while a preset is active. Both fields are optional and fully backward compatible — presets without them behave exactly as before.
 
+### Preset auto-save
+
+By default, adjusting the target temperature (or humidity, or fan speed) from the thermostat UI **while a preset is selected** updates that preset so your new value becomes the preset's value. Without this, the adjustment would only last until the preset was re-applied (re-selecting it, presence restoring it, a template preset re-rendering, or a Home Assistant restart), at which point the configured value would win and your change would appear to revert.
+
+With auto-save on (the default) the change sticks: the preset keeps your new value, and — for UI/config-entry setups — it is persisted so the preset configuration shown in the options flow stays in sync.
+
+- The behavior is controlled by the `preset_auto_save` option (default `true`). Set it to `false` to keep the classic behavior where the preset always reverts to its configured value.
+- Template-based preset values are never overwritten — the template remains the source of truth, so a one-off UI nudge won't freeze it into a static number.
+- Selecting a *different* preset, or `none`, is unaffected; auto-save only folds changes into the preset that is currently active.
+
+```yaml
+preset_auto_save: false # optional, defaults to true
+```
+
 ## Auto Mode
 
 When the thermostat is configured with at least two distinct climate capabilities (any of heating, cooling, drying, fan), the integration exposes `auto` as one of its HVAC modes. In Auto Mode the integration picks between HEAT, COOL, DRY, and FAN_ONLY automatically based on the current environment, configured tolerances, and a fixed priority table:
@@ -945,6 +960,12 @@ The reason is grouped into three categories:
 ### fan_on_with_ac
 
   _(optional) (boolean)_ If set to `true` the fan will be turned on together with the AC. This is useful for central AC systems that require the fan to be turned on together with the AC.
+
+  _requires: `fan`_
+
+### fan_on_with_heater
+
+  _(optional) (boolean)_ If set to `true` the fan runs together with the heater or heat pump while in a heating/cooling mode, instead of being turned off. This is useful when the fan is the unit's air handler (e.g. a heat pump configured via `heat_pump_cooling` plus a separate `fan` entity). Defaults to `false` (the fan only runs in fan mode).
 
   _requires: `fan`_
 

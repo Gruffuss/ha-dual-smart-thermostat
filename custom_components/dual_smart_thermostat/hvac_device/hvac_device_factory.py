@@ -53,6 +53,7 @@ from ..hvac_device.heat_pump_device import HeatPumpDevice
 from ..hvac_device.heater_aux_heater_device import HeaterAUXHeaterDevice
 from ..hvac_device.heater_cooler_device import HeaterCoolerDevice
 from ..hvac_device.heater_device import HeaterDevice
+from ..hvac_device.heater_fan_device import HeaterFanDevice
 from ..hvac_device.multi_hvac_device import MultiHvacDevice
 from ..hvac_device.predictive_heater_device import PredictiveHeaterDevice
 from ..hvac_device.pwm_heater_device import PwmHeaterDevice
@@ -241,6 +242,26 @@ class HVACDeviceFactory:
                 self._features,
             )
 
+        # Combine the heater/heat pump with a fan into a dedicated cooperative
+        # device (mirrors CoolerFanDevice), so the fan can run alongside the
+        # heater when fan_on_with_heater is enabled (#622). With a cooler
+        # configured the fan already belongs to CoolerFanDevice, so only take
+        # it over when the user opted in - otherwise fan_on_with_heater has no
+        # effect on heater+cooler systems (#637).
+        if heater_device is not None and fan_device is not None:
+            if (
+                cooler_device is None
+                or self._features.is_configured_for_fan_on_with_heater
+            ):
+                heater_device = HeaterFanDevice(
+                    self.hass,
+                    [heater_device, fan_device],
+                    self._initial_hvac_mode,
+                    environment,
+                    openings,
+                    self._features,
+                )
+
         _LOGGER.debug(
             "heater_device: %s, cooler_device: %s", heater_device, cooler_device
         )
@@ -287,8 +308,6 @@ class HVACDeviceFactory:
 
         if heater_device:
             sub_devices = [heater_device]
-            if fan_device:
-                sub_devices.append(fan_device)
             if dryer_device:
                 sub_devices.append(dryer_device)
             if len(sub_devices) > 1:

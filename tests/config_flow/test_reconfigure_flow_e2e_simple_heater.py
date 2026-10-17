@@ -27,6 +27,7 @@ from custom_components.dual_smart_thermostat.const import (
 def simple_heater_entry():
     """Create a mock config entry for simple heater system."""
     entry = Mock()
+    entry.options = {}
     entry.entry_id = "test_simple_heater"
     entry.data = {
         CONF_NAME: "Simple Heater",
