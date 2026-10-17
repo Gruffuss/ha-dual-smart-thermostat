@@ -880,10 +880,13 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
                 "Reconfiguring %s - integration will be reloaded",
                 cleaned_config.get(CONF_NAME, "thermostat"),
             )
-            return self.async_update_reload_and_abort(
+            # The entry update listener owns the reload. HA's reload-and-abort
+            # helper would schedule a second reload for this same update.
+            self.hass.config_entries.async_update_entry(
                 self._get_reconfigure_entry(),
                 data=cleaned_config,
             )
+            return self.async_abort(reason="reconfigure_successful")
         else:
             # Config flow: create new entry
             _LOGGER.info(

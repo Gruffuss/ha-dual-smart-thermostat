@@ -163,8 +163,8 @@ async def test_reconfigure_updates_entity(mock_config_entry):
         assert flow.collected_config[CONF_HEATER] == "switch.new_heater"
 
 
-async def test_reconfigure_uses_update_reload_and_abort():
-    """Test that reconfigure flow uses async_update_reload_and_abort."""
+async def test_reconfigure_updates_entry_and_aborts():
+    """Update once and leave reload scheduling to the entry update listener."""
     flow = ConfigFlowHandler()
     flow.hass = Mock()
 
@@ -189,17 +189,13 @@ async def test_reconfigure_uses_update_reload_and_abort():
             CONF_SENSOR: "sensor.temp",
         }
 
-        # Mock async_update_reload_and_abort
-        flow.async_update_reload_and_abort = Mock(
-            return_value={"type": "abort", "reason": "reconfigure_successful"}
-        )
-
         # Call _async_finish_flow which should detect SOURCE_RECONFIGURE
         result = await flow._async_finish_flow()
 
-        # Should call async_update_reload_and_abort
-        assert flow.async_update_reload_and_abort.called
+        flow.hass.config_entries.async_update_entry.assert_called_once()
+        flow.hass.config_entries.async_schedule_reload.assert_not_called()
         assert result["type"] == "abort"
+        assert result["reason"] == "reconfigure_successful"
 
 
 async def test_config_flow_uses_create_entry():
@@ -278,7 +274,7 @@ async def test_reconfigure_all_system_types():
 async def test_reconfigure_uses_data_parameter_not_data_updates():
     """Test that reconfigure flow uses data parameter to replace all config.
 
-    This test verifies that async_update_reload_and_abort is called with
+    This test verifies that async_update_entry is called with
     the 'data' parameter (which replaces all data) rather than 'data_updates'
     (which merges data). This is critical to prevent duplicate entries.
 
@@ -310,18 +306,14 @@ async def test_reconfigure_uses_data_parameter_not_data_updates():
         }
         flow.collected_config = new_config
 
-        # Mock async_update_reload_and_abort to capture how it's called
-        with patch.object(flow, "async_update_reload_and_abort") as mock_update:
-            mock_update.return_value = {
-                "type": "abort",
-                "reason": "reconfigure_successful",
-            }
+        with patch.object(
+            flow.hass.config_entries, "async_update_entry"
+        ) as mock_update:
 
             # Call _async_finish_flow
             result = await flow._async_finish_flow()
 
-            # Verify async_update_reload_and_abort was called
-            assert mock_update.called, "async_update_reload_and_abort should be called"
+            mock_update.assert_called_once()
 
             # Verify it was called with the entry and data parameter (not data_updates)
             call_args = mock_update.call_args
@@ -374,8 +366,8 @@ if __name__ == "__main__":
             ("Keeps system type", test_reconfigure_keeps_system_type(mock_entry)),
             ("Updates entity", test_reconfigure_updates_entity(mock_entry)),
             (
-                "Uses update_reload_and_abort",
-                test_reconfigure_uses_update_reload_and_abort(),
+                "Updates entry and aborts",
+                test_reconfigure_updates_entry_and_aborts(),
             ),
             ("Config uses create_entry", test_config_flow_uses_create_entry()),
             ("All system types", test_reconfigure_all_system_types()),

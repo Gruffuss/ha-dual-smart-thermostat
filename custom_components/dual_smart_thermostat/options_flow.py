@@ -736,7 +736,11 @@ class OptionsFlowHandler(OptionsFlow):
         # If we don't clean entry.data, deselected presets will reappear from the merge
         # We update both entry.data and return updated_data to update entry.options
         try:
-            self.hass.config_entries.async_update_entry(entry, data=updated_data)
+            # One atomic update triggers one listener reload. When HA finishes
+            # the options flow it writes these same options again (a no-op).
+            self.hass.config_entries.async_update_entry(
+                entry, data=updated_data, options=updated_data
+            )
             _LOGGER.debug(
                 "Updated entry.data to remove deselected presets. New data keys: %s",
                 list(updated_data.keys()),
