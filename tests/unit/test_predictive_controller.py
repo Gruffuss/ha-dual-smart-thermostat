@@ -33,10 +33,17 @@ def controller(gate="auto", **kwargs):
 
 
 class Driver:
-    """The device's minute callback and PWM boundary, without HA or timers."""
+    """The device's minute callback and PWM boundary, without HA or timers.
 
-    def __init__(self, ctl):
+    plan_offset models the device's PWM boundary reading the monotonic clock
+    apart from the minute tick: plan() then gets now_min + plan_offset. The
+    valve stays on the tick grid, so runs with different offsets see the
+    same actuator.
+    """
+
+    def __init__(self, ctl, plan_offset=0.0):
         self.ctl = ctl
+        self.plan_offset = plan_offset
         self.start = None
         self.on = 0
         self.valve = False
@@ -48,7 +55,7 @@ class Driver:
         restart = self.ctl.minute(inp)
         elapsed = inp.now_min - self.start if self.start is not None else None
         if restart or elapsed is None or elapsed < 0 or elapsed + 0.05 >= cycle:
-            on = self.ctl.plan(inp)
+            on = self.ctl.plan(replace(inp, now_min=inp.now_min + self.plan_offset))
             # plan_pwm cannot express different on/off minima. Keep its raw
             # durations, then apply the same collapse rule to each side.
             pwm = plan_pwm(100 * on / cycle, 60 * cycle)
@@ -163,6 +170,53 @@ def test_gate_requires_skill_against_persistence():
     ctl.tracker.mae120 = 0.41
     assert ctl.minute(inputs(2))
     assert ctl.mode == "fallback"
+
+
+def test_plan_at_a_sub_minute_offset_does_not_count_a_minute():
+    """The device's boundary reads the clock apart from the tick (review HIGH 1)."""
+    runs = {}
+    for offset in (0.0, 0.4):
+        ctl = controller()
+        driver = Driver(ctl, plan_offset=offset)
+        temp, slab = 20.5, 0.3
+        for minute in range(360):
+            reading = round(temp, 1)
+            valve = driver.tick(inputs(minute, temp=reading, outdoor=5, setpoint=21))
+            temp, slab = plant_step(temp, slab, 5, valve)
+        runs[offset] = ctl
+    exact, offset = runs[0.0], runs[0.4]
+    assert exact._model_minute == offset._model_minute == 359
+    assert [m.blocks for m in offset.model.models.values()] == [23] * 6
+    assert [m.blocks for m in exact.model.models.values()] == [23] * 6
+    counters = ("n60", "n120", "n120_independent")
+    assert [getattr(offset.tracker, name) for name in counters] == [
+        getattr(exact.tracker, name) for name in counters
+    ]
+    assert exact.tracker.n60 > 0
+    assert offset.pi.integral == pytest.approx(exact.pi.integral, abs=1e-9, rel=0)
+
+
+def test_cold_floor_survives_a_plan_at_a_sub_minute_offset():
+    """The floor's full cycle is kept until a plan uses it (review MEDIUM 3)."""
+    ctl = ready_gate()
+    ctl.mode = "predictive"
+    cold = inputs(temp=22.4, outdoor=20, setpoint=23)
+    assert ctl.minute(cold)
+    assert ctl.mode == "fallback"
+    assert ctl.plan(replace(cold, now_min=0.0001)) == 30
+    # A tick may come before the device's restart reaches plan().
+    ctl = ready_gate()
+    ctl.mode = "predictive"
+    assert ctl.minute(cold)
+    ctl.minute(replace(cold, now_min=1))
+    assert ctl.plan(replace(cold, now_min=1.3)) == 30
+    # A temperature fault still wins over a pending floor.
+    ctl = ready_gate()
+    ctl.mode = "predictive"
+    assert ctl.minute(cold)
+    fault = replace(cold, now_min=1, temp=None)
+    ctl.minute(fault)
+    assert ctl.plan(replace(fault, now_min=1.3)) < 30
 
 
 def test_gate_requires_independent_windows_and_seven_days():
