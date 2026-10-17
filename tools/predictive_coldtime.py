@@ -7,7 +7,8 @@ sp - 0.3 and sp - 0.7 split by the auto run's gate segments.
 
 Each variant changes one thing, by patching the pure control code in this
 process only; the oracles are test-only and need no production change. A
-"+v5" suffix selects v5's actuator (min_off 0). ``--seeds`` reruns the
+"+v5" suffix selects v5's actuator (min_off 0) and v5's gate (it also
+demotes on persistence), "+v5gate" v5's gate alone. ``--seeds`` reruns the
 fixture with other noise seeds as a diagnostic; the acceptance test keeps 42.
 
 Run from the repository root with PYTHONPATH set to it:
@@ -398,7 +399,9 @@ def demote_on_absolute_error_only():
     """Other cause: drop the 'mae120 > persistence_mae120' demotion clause.
 
     While predictive holds the room steady, |T_now - T_snapshot| shrinks, so
-    the persistence baseline improves with the controller it judges.
+    the persistence baseline improves with the controller it judges. Since
+    the owner's ruling this is production's gate; the variant now only
+    changes runs with "+v5" or "+v5gate".
     """
 
     def wrap(original):
@@ -450,8 +453,6 @@ SETTINGS = {
     "c3_kp_100": dict(kp=100.0),
     "c3_ki_0025": dict(ki=0.025),
     "c3_ki_01": dict(ki=0.1),
-    # v5's actuator (no minimum off), for the always-on v5 diagnostic.
-    "v5_actuator": dict(min_off_minutes=0),
 }
 
 VARIANTS = {
@@ -459,7 +460,7 @@ VARIANTS = {
     "c1_planner_tracker_oracle": both(planner_oracle, tracker_oracle),
     "c2_hold_oracle": hold_oracle,
     "c2_k_oracle": no_loss_learning,
-    **{name: no_settings for name in SETTINGS if name.startswith(("c3_", "v5_"))},
+    **{name: no_settings for name in SETTINGS if name.startswith("c3_")},
     "x_exact_pwm": exact_pwm,
     "x_bank_full_cycle": bank_counts_full_cycle,
     "x_bank_full_cycle_exact_pwm": both(bank_counts_full_cycle, exact_pwm),
@@ -471,16 +472,24 @@ VARIANTS = {
 
 
 def run(name, seed=42):
-    """Run PI and auto; a "+v5" suffix also selects v5's actuator (min_off 0)."""
-    base, v5 = (name[:-3], True) if name.endswith("+v5") else (name, False)
+    """Run PI and auto, with v5's actuator and gate on a "+v5" suffix.
+
+    "+v5gate" selects v5's gate alone (persistence demotion, production's
+    gate until the owner's ruling of 2026-10-17).
+    """
+    base, _, suffix = name.partition("+")
     setup = VARIANTS.get(base)
     if setup is None and base != "baseline":
         raise SystemExit(f"unknown variant {name}")
     undo = setup() if setup else None
     try:
         settings = dict(SETTINGS.get(base, {}))
-        if v5:
+        if suffix in ("v5", "v5gate"):
+            settings["persistence_demotion"] = True
+        if suffix == "v5":
             settings["min_off_minutes"] = 0
+        elif suffix not in ("", "v5gate"):
+            raise SystemExit(f"unknown suffix {suffix}")
         return simulate("off", seed, **settings), simulate("auto", seed, **settings)
     finally:
         if undo:
