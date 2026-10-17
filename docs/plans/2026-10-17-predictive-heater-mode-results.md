@@ -351,3 +351,46 @@ of 20.4. The true temperature was 20.534 then and never below 20.5 in that span.
 
 **Full suite:** 1720 passed, 2 skipped, exit 0, in 71 s (42.9 s before). The 32-seed acceptance
 takes 28.8 s of that.
+
+## Cold-room floor after three consecutive minutes (owner, 2026-10-17)
+
+**Decision:** the floor trips only after 3 consecutive valid minutes with T < sp − 0.5 while
+heating is wanted.
+- A minute that is not below the threshold resets the count. So does an invalid or faulted minute,
+  and (mine) a missed tick, since "consecutive" means a tick every 1 ± 0.05 min.
+- A fault still cancels a pending floor.
+- A reading seen only by `plan()` is one more sample of the last minute, not a minute: it can trip
+  only the one-sample rule.
+- `PredictiveSettings.cold_floor_minutes` is 3, an internal field. The v5-equivalence tests set 1
+  (v5's rule) and still match v5 to 1e-6.
+- Commit 56779dc, on the merge of predictive/task3-glue (fast-forward to 3ae7813).
+
+**32 seeds, production gate and actuator** (mean over seeds 0-31; standard error in brackets):
+
+| run | PI < 20.7 | auto < 20.7 | auto − PI < 20.7 | PI < 20.3 | auto < 20.3 | auto − PI < 20.3 | auto − PI min T | auto − PI overshoot | seeds meeting the per-seed margin | cold-floor demotions |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| before: one-sample floor (`x_one_sample_floor`) | 3605.9 | 3095.8 | −510.1 (41.4) | 1411.6 | 1120.6 | −291.0 (25.3) | +0.0000 | −0.0150 | 31/32 (seed 24 fails) | 22 |
+| after: three minutes (`baseline`) | 3605.9 | 3048.7 | −557.2 (36.3) | 1411.6 | 1096.8 | −314.8 (24.9) | +0.0000 | −0.0161 | 31/32 (seed 5 fails) | 13 |
+
+- The margin holds on the means, so the change is kept.
+- No demotion in either run came from mae_off; every one is the cold-room floor.
+- **The failing seed:**
+  - Seed 5 after the change: auto 1423 against PI 1335 minutes below 20.3. It was 1392 before
+    (met).
+  - Seed 24 after the change: 1073 against 1165 (met).
+- **Seed 42 (diagnostic only):**
+  - After the change: auto 3069 / 981 against PI 3628 / 1235. Auto stays predictive from minute
+    10080 to the end, with no demotion.
+  - Before the change: 3296 / 1196, with the floor demotion at 12584.
+
+**Device tests:** three tests in `tests/features/test_predictive_heating.py` (owned by the task3
+builder, not changed here) still expect the one-sample floor and fail:
+- `test_cold_floor_restarts_cycle_full_on`;
+- `test_store_delayed_save_and_immediate_gate_save`;
+- `test_cycle_boundary_saves_gate_switch_immediately`.
+
+With `cold_floor_minutes` temporarily set back to 1, all 43 tests in that file pass. With three
+ticks of the low reading in each of the three tests, tried locally and reverted, they pass at 3.
+The third test then trips on the minute tick, not on the restart.
+
+**Full suite at 56779dc:** 1818 passed, 2 skipped, 3 failed (the three above), exit 1.
