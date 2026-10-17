@@ -412,6 +412,11 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
     - first candidate: the constant-outdoor horizon, its ceiling measured with the fixture's true future outdoor;
     - then heat-loss and hold-duty learning under disturbance, then PI gains.
   - No widened margins and no expected failures.
+- 2026-10-17 (mine, from Wave 1's measurements):
+  - **Production keeps the minimum off** (`min_off = min_on = min_cycle_duration`). This follows CLAUDE.md "Device Safety", which says to respect min cycle durations, and plan_pwm, which applies `min_cycle_duration` in both directions.
+  - The two equivalence tests (gated, and the always-on diagnostic) run with `min_off_minutes=0`, v5's actuator, and must match v5's published numbers to 1e-6.
+  - Wave 1 measured the always-on acceptance under the production actuator: auto 3676 / 1307 min below sp − 0.3 / sp − 0.7 against PI 3628 / 1235. That is within the margin for sp − 0.3, and 12 min over for sp − 0.7. Min T and overshoot are equal to PI's.
+  - With the minimum off removed, the port reproduced every published v5 solar number. That makes the minimum off the reason the first gated run failed.
 
 ## Ideas (later, owner's choice)
 
