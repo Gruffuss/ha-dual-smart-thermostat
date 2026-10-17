@@ -268,7 +268,7 @@ Pure tests port the v5 suites one to one; they use pytest functions with no hass
 - `tests/unit/test_predictive_closed_loop.py` ports `.tests/test_closed_loop.py`, driving `PredictiveController` plus `plan_pwm` minute by minute against the same plant (`plant_step` from `.tests/test_model.py`, readings rounded to 0.1 °C):
   - `test_predictive_closed_loop_limits`: overshoot ≤ 0.3, MAE over the last 24 h ≤ 0.2, max hot run < 240;
   - `test_predictive_tracks_better_than_pi`: predictive MAE over the last 24 h < PI's, and max overshoot ≤ 0.3. This replaces v5's strict "beats PI on overshoot" expected failure, as the v5 fix round did (heating session, 2026-10-17: PI never overshoots that simulated plant);
-  - `test_predictive_auto_not_colder_than_pi_with_solar_mismatch`, as v5's final test (`.tests/test_closed_loop.py` at `c761462`):
+  - The solar-mismatch fixture, shared by the two solar tests below, as in v5's final test (`.tests/test_closed_loop.py` at `c761462`):
     - 10 days; theta (0.03, 0.0015, 0), tau 120;
     - outdoor 8 + 5·sin(2πt/1440);
     - solar gain 0.01·sin(π(minute_of_day − 600)/360) from 10:00 to 16:00;
@@ -276,10 +276,12 @@ Pure tests port the v5 suites one to one; they use pytest functions with no hass
     - feasibility guard: assert alpha/beta + min outdoor ≥ sp + 1.
     - The acceptance is **relative**, as the owner ruled for v5: auto minutes below sp − 0.3 and below sp − 0.7 are each ≤ PI's + 60; auto min T ≥ PI's − 0.1; auto overshoot ≤ PI's + 0.3.
     - Absolute cold time under strong unmodelled solar gain is an open problem shared by PI and predictive (results file, "Open"). It is not a requirement here.
-  - **Demand in the solar fixture needs an owner decision.** v5's passing run gates demand with a hysteresis on the reading (on below 20.7, off at ≥ 21, `test_closed_loop.py:48-52` at `c761462`). That stands for a bang_bang thermostat driving AppDaemon's demand switch. In the port there is no demand switch: predictive and its PI fallback heat continuously while the hvac mode is HEAT. So the faithful fixture is "demand always on".
-    - v5's own always-on diagnostic (results file, second solar table) has auto **failing** the relative margin: 2228 vs PI's 2124 + 60 minutes below sp − 0.7, and 4080 vs 3999 + 60 below sp − 0.3. Min T and overshoot pass.
-    - Those numbers come from the results file; I did not run them. The port runs the same logic, so the same result is expected.
-    - The plan ports both fixtures. The gated one is a port-equivalence test that must pass. The always-on one is the acceptance whose margin the owner rules on (see "Decision log").
+  - **Two solar tests, both must pass, with the same unchanged relative margin** (owner, 2026-10-17, "Decision log"):
+    - `test_predictive_auto_not_colder_than_pi_with_solar_mismatch_gated` is the **v5 equivalence test**. Demand is gated with v5's hysteresis on the reading: on below 20.7, off at ≥ 21 (`test_closed_loop.py:48-52` at `c761462`). In the port that gating is driven by switching the setpoint input between 21 and None.
+    - `test_predictive_auto_not_colder_than_pi_with_solar_mismatch` is the **acceptance**. Demand is always on, which is the faithful setup for the port: there is no demand switch, and predictive and its PI fallback heat continuously while the hvac mode is HEAT.
+  - **The acceptance is expected to fail at first.** v5's own always-on diagnostic (results file, second solar table) has auto over the margin: 2228 vs PI's 2124 + 60 minutes below sp − 0.7, and 4080 vs 3999 + 60 below sp − 0.3. Min T and overshoot pass. Those numbers come from the results file; I did not run them.
+    - Task 2b finds and fixes the cause.
+    - There is no widened margin, no expected-failure marker and no skip. Until Task 2b lands, the acceptance test fails and the suite's exit code is not 0, so nothing merges past Wave 1's branch.
 
 HA-level tests use the real `hass` fixture and freezer, following `tests/features/test_ai_heating.py`; they go in `tests/features/test_predictive_heating.py`:
 - `test_predictive_mode_creates_device`;
@@ -359,14 +361,37 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
   - Task 1 `control/predictive_model.py` + `tests/unit/test_predictive_model.py`;
   - Task 2 `control/pi_fallback.py` + `control/predictive.py` + `tests/unit/test_predictive_controller.py` + `tests/unit/test_predictive_closed_loop.py`.
 
-  Each test is seen failing first, then the suite runs with the exit code read.
-- **Wave 2, one builder (HA glue), stacked on Wave 1 once it reports DONE:**
+  Each test is seen failing first, then the suite runs with the exit code read. Wave 1 reports DONE when everything passes except `test_predictive_auto_not_colder_than_pi_with_solar_mismatch` (the always-on acceptance), whose failing numbers it reports.
+- **Task 2b: cause of predictive's extra cold time with demand always on** (owner, 2026-10-17). This is a debug of an unknown cause, so it is Opus at effort xhigh (account rule), on the Wave 1 branch.
+  - **Method:** run the always-on solar fixture (section 7), and change **one candidate per run**. Record for each run, PI and auto side by side:
+    - minutes below sp − 0.3 and below sp − 0.7;
+    - min T and overshoot;
+    - promotion and demotion minutes, and the gate's `mae120` and `persistence_mae120`.
+
+    No cause is assumed, and no candidate's fix is kept unless its run shows the acceptance margin met.
+  - **Candidate 1, outdoor held constant over the horizon** (owner's first candidate):
+    - `forecast`/`plan_cycle` hold `T_out` constant over 240 min (`adaptive_pid_heating.py:252-259, 272-293`), while the fixture swings 10 °C a day.
+    - First measure the **ceiling**. Give `forecast` and `plan_cycle` an optional per-minute outdoor sequence, and feed it the fixture's **true** future outdoor. This is a test-only oracle.
+    - The tracker also re-simulates with the snapshot's constant outdoor (`:328`). So run the oracle twice, planner only and planner + tracker, and report both. The gate's MAE, and so its promotion and demotion timing, may move independently of the planner.
+    - If the ceiling meets the margin, the real fix is to feed the HA weather forecast's hourly temperature into the forecast. That means:
+      - a `weather` entity selector in the flows (real selector, section 6);
+      - `weather.get_forecasts` (type hourly), read at each cycle boundary and interpolated to minutes;
+      - falling back to the constant last-known outdoor when no forecast is available.
+
+      The fix is then measured again with a forecast that deviates from the truth by the fixture's own noise model **(mine: how to test the realistic case; the owner names the fix, not the noise)**.
+  - **Candidate 2, heat-loss and hold-duty learning under disturbance:** whether `LossLearner` windows ever complete in the fixture (`:78-131`; its 180-min window needs |sp − T| ≤ 0.3 and ≤ 0.2 °C drift), and what `hold_duty` (`:262-264`) returns against the true steady duty.
+  - **Candidate 3, PI gains:** kp 65 and ki 0.05 against the fixture's plant.
+  - **Stop when the acceptance passes.** Then:
+    - write each run's numbers into a results file next to this plan, `docs/plans/2026-10-17-predictive-heater-mode-results.md`;
+    - send the cause and the fix to the heating session, since v5 in AppDaemon has the same logic (owner rule: hand defects to their owner);
+    - if no candidate closes the gap, report the measured table to the owner instead of changing the margin.
+- **Wave 2, one builder (HA glue), stacked on Wave 1 once it reports DONE (it does not wait for Task 2b; if Task 2b's fix adds the weather forecast, its HA part is added to Task 3 or a follow-up of the same builder):**
   - Task 3: `const.py` enum and keys, `hvac_device/predictive_heater_device.py`, `pwm_controller.async_restart`, factory branch, `heater_cooler_device.py` change (section 2), maintenance hook, Store, import service + `services.yaml`, `sensor.py` predictive sensors, reset service;
   - plus `tests/features/test_predictive_heating.py`.
 - **Wave 2, a second builder in parallel (flows only; they share no files with Task 3 apart from `const.py`, whose keys Task 3 adds first):**
   - Task 4: `schemas.py`, the YAML schema in `climate.py:271-278` (coordinated: Task 3 does not touch those lines), translations, tools validator/deps/docs;
   - plus the config-flow tests.
-- **One Sonnet review of both waves.** Fix rounds for medium and high findings go to the warm builders. Then the full suite on the merged tip (Windows venv), then Docker test and lint before release.
+- **One Sonnet review of both waves and Task 2b.** Fix rounds for medium and high findings go to the warm builders. Then the full suite on the merged tip (Windows venv, exit code 0, with **both** solar tests passing), then Docker test and lint before release.
 - **Task 5, owner and heating session:** release, cut-over of the pilot room (bathroom), then the others (section 8).
 
 ## Decision log
@@ -377,10 +402,14 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
   - The pilot room is the bathroom (`climate.bathroom_dual`).
   - The strict "predictive beats PI on overshoot" criterion is replaced by the v5 fix round's "MAE last 24 h < PI's and overshoot ≤ 0.3".
   - v5's solar acceptance is relative to PI (owner ruling recorded in the v5 results file); absolute solar cold time is an open problem shared with PI.
-- **Open, owner:** the solar acceptance fixture for the port (section 7). Choices:
-  - (a) accept always-on demand with the v5 relative margin, which v5's diagnostic says fails (+104 and +81 min over PI);
-  - (b) widen the margin for the always-on fixture;
-  - (c) keep only the gated fixture as acceptance, and treat always-on cold time as part of the open solar problem.
+- 2026-10-17 (owner, relayed by the heating session; option "d", none of the offered a/b/c):
+  - The **always-on** solar fixture is the must-pass acceptance for the port, with v5's unchanged relative margin: auto minutes below sp − 0.3 and below sp − 0.7 are each ≤ PI's + 60; min T ≥ PI's − 0.1; overshoot ≤ PI's + 0.3.
+  - The gated fixture stays as the v5 equivalence test.
+  - Before the acceptance can pass, find and fix the cause of predictive's extra cold time in the always-on case (Task 2b):
+    - measure the candidates one at a time with the closed-loop fixture, none assumed;
+    - first candidate: the constant-outdoor horizon, its ceiling measured with the fixture's true future outdoor;
+    - then heat-loss and hold-duty learning under disturbance, then PI gains.
+  - No widened margins and no expected failures.
 
 ## Ideas (later, owner's choice)
 
