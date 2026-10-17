@@ -13,6 +13,7 @@ import homeassistant.util.dt as dt_util
 from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+import voluptuous as vol
 
 from custom_components.dual_smart_thermostat.const import DOMAIN
 from tests import common, setup_sensor, setup_switch
@@ -505,7 +506,7 @@ async def test_floor_protection_overrides_pwm_and_keeps_validity(hass, freezer):
     assert not heater._pwm.running
     assert heater._ctl._last_inputs.valve_on
     assert heater._ctl._last_inputs.valid
-    heater._cycle_started -= timedelta(days=7)
+    heater._cycle_started_min -= 7 * 24 * 60
     with patch.object(
         heater._ctl, "forecasts", wraps=heater._ctl.forecasts
     ) as forecasts:
@@ -583,3 +584,71 @@ async def test_cycle_boundary_saves_gate_switch_immediately(
     await _heater(hass)._pwm.async_restart()
     await hass.async_block_till_done()
     assert hass_storage[key]["data"]["mode"] == "fallback"
+
+
+@pytest.mark.parametrize(
+    ("extra", "error"),
+    [
+        ({"outside_sensor": None}, "predictive_requires_outside_sensor"),
+        ({"pwm_cycle_duration": 1799}, "predictive_cycle_whole_minutes"),
+        ({"pwm_cycle_duration": 1200}, "predictive_cycle_too_short"),
+    ],
+)
+def test_yaml_predictive_dependencies_are_validated(hass, extra, error):
+    from custom_components.dual_smart_thermostat.climate import PLATFORM_SCHEMA
+
+    config = {
+        "platform": DOMAIN,
+        "name": "test",
+        "heater": common.ENT_SWITCH,
+        "target_sensor": common.ENT_SENSOR,
+        "outside_sensor": "sensor.outdoor",
+        "heater_control_mode": "predictive",
+        "pwm_cycle_duration": 1800,
+        "min_cycle_duration": {"minutes": 10},
+        **extra,
+    }
+    if config.get("outside_sensor") is None:
+        config.pop("outside_sensor")
+    with pytest.raises(vol.Invalid, match=error):
+        PLATFORM_SCHEMA(config)
+
+
+@pytest.mark.asyncio
+async def test_heat_cool_preserves_cooler_minimum_cycle(hass, freezer):
+    hass.states.async_set(common.ENT_COOLER, "off")
+    calls = await _setup(
+        hass,
+        temperature=27,
+        extra={
+            "cooler": common.ENT_COOLER,
+            "heat_cool_mode": True,
+            "target_temp_low": 21,
+            "target_temp_high": 25,
+            "initial_hvac_mode": HVACMode.HEAT_COOL,
+        },
+    )
+    hass.states.async_set(common.ENT_COOLER, "on")
+    await hass.async_block_till_done()
+    calls.clear()
+    setup_sensor(hass, 23)
+    await hass.async_block_till_done()
+    assert not [
+        c
+        for c in calls
+        if c.service == "turn_off" and c.data["entity_id"] == common.ENT_COOLER
+    ]
+    assert not _heater(hass)._pwm.running
+
+
+@pytest.mark.asyncio
+async def test_controller_clock_does_not_follow_wall_clock_adjustments(hass, freezer):
+    await _setup(hass)
+    await _tick(hass, freezer, 2)
+    heater = _heater(hass)
+    before = heater._inputs().now_min
+    with patch(
+        "homeassistant.util.dt.utcnow",
+        return_value=dt_util.utcnow() - timedelta(hours=1),
+    ):
+        assert heater._inputs().now_min >= before

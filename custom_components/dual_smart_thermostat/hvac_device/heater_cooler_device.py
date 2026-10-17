@@ -179,10 +179,9 @@ class HeaterCoolerDevice(MultiHvacDevice):
             and not self.environment.is_floor_cold
             and (
                 self.environment.is_too_hot("_target_temp_high")
-                or (
-                    self.cooler_device.is_active
-                    and not self.environment.is_too_cold("_target_temp_high")
-                )
+                # An active cooler owns its stop decision, including minimum
+                # cycle duration. Resume predictive heat once it reports off.
+                or self.cooler_device.is_active
             )
         )
         heater.set_cooler_selected(cool)

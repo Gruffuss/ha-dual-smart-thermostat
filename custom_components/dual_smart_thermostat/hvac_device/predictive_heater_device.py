@@ -5,6 +5,7 @@ import json
 import logging
 import math
 from pathlib import Path
+import time
 
 from homeassistant.components.climate import HVACMode
 from homeassistant.const import UnitOfTemperature
@@ -60,10 +61,11 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
         self._store_key = store_key
         self._ctl = PredictiveController(settings)
         self._origin = dt_util.utcnow()
+        self._clock_origin = time.monotonic()
         self._last_tick = self._origin
         self._interval_valid = False
         self._planned_setpoint = None
-        self._cycle_started = self._origin
+        self._cycle_started_min = 0.0
         self._planned_on_minutes = 0.0
         self._outdoor = None
         self._last_opening = None
@@ -144,7 +146,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
         )
         ac_valid = self._last_ac is None or now - self._last_ac >= timedelta(minutes=30)
         return MinuteInputs(
-            now_min=(now - self._origin).total_seconds() / 60,
+            now_min=(time.monotonic() - self._clock_origin) / 60,
             temp=self._celsius(temp),
             outdoor=self._celsius(self._outdoor),
             valve_on=self.is_on,
@@ -179,7 +181,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
     def _compute_duty(self):
         inp = self._inputs()
         self._planned_setpoint = inp.setpoint
-        self._cycle_started = dt_util.utcnow()
+        self._cycle_started_min = inp.now_min
         mode = self._ctl.mode
         self._planned_on_minutes = self._ctl.plan(inp)
         if mode != self._ctl.mode:
@@ -193,6 +195,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
             return
         data = await self._store.async_load()
         self._origin = self._last_tick = dt_util.utcnow()
+        self._clock_origin = time.monotonic()
         if data is not None:
             try:
                 downtime = self._downtime(data.get("saved_at"))
@@ -277,6 +280,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
             raise HomeAssistantError(f"Cannot import predictive state: {exc}") from exc
         self._ctl = restored
         self._origin = self._last_tick = dt_util.utcnow()
+        self._clock_origin = time.monotonic()
         self._interval_valid = False
         await self.async_save()
         self._pwm.cancel()
@@ -291,6 +295,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
         self._ctl = PredictiveController(self._settings)
         self._ctl.mode = "fallback"
         self._origin = self._last_tick = dt_util.utcnow()
+        self._clock_origin = time.monotonic()
         self._interval_valid = False
         self._pwm.cancel()
         await self.async_save()
@@ -304,7 +309,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
             inp = self._inputs()
             if self._pwm.running:
                 on_minutes = self._planned_on_minutes
-                elapsed = (now - self._cycle_started).total_seconds() / 60
+                elapsed = inp.now_min - self._cycle_started_min
             else:
                 # Overrides have no running PWM cycle. Never simulate the age
                 # of a stopped cycle, which could be days of unnecessary work.
@@ -328,7 +333,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
                 "persistence_mae_120": tracker.persistence_mae120,
                 "mode": self._ctl.mode,
                 "demoted_until": (
-                    (self._origin + timedelta(minutes=until)).isoformat()
+                    (now + timedelta(minutes=until - inp.now_min)).isoformat()
                     if until is not None
                     else None
                 ),

@@ -192,7 +192,7 @@ from .managers.presence_manager import PresenceHvacModeScope, PresenceManager
 from .managers.preset_action_manager import PresetActionManager
 from .managers.preset_manager import PresetManager
 from .managers.valve_maintenance_manager import ValveMaintenanceManager
-from .schemas import validate_template_or_number
+from .schemas import validate_heating_control_config, validate_template_or_number
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -372,6 +372,16 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         for (k, v) in CONF_PRESETS_OLD.items()
     }
 )
+
+
+def _validate_heating_control_yaml(config):
+    """Apply the flow's predictive actuator constraints to YAML as well."""
+    if errors := validate_heating_control_config(config):
+        raise vol.Invalid(errors["base"])
+    return config
+
+
+PLATFORM_SCHEMA = vol.All(PLATFORM_SCHEMA, _validate_heating_control_yaml)
 
 
 async def async_setup_entry(
