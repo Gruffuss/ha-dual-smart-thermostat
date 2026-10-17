@@ -65,7 +65,7 @@ The numbers are v5's. "(a)-(e)" are the heating session's fix-round items, and t
     - `alpha_rel_sd <= 0.25`, where alpha_rel_sd = `sqrt(err·P00)/alpha` (`:203-205`);
     - `mae120 <= mae_on` (0.3);
     - `mae120 <= 0.7 · persistence_mae120 + 1e-12` (the tolerance keeps .28 <= .7·.4 from failing on binary rounding).
-  - **Demote** when `mae120 > mae_off` (0.45) or `mae120 > persistence_mae120`.
+  - **Demote** when `mae120 > mae_off` (0.45). v5 also demoted when `mae120 > persistence_mae120`. The owner dropped that rule on 2026-10-17 ("Decision log"). It survives only as the internal flag `PredictiveSettings.persistence_demotion`, which is on in the v5-equivalence tests alone.
   - The `auto | off | on` setting works as in v5, except that an active 24 h demotion also overrides a forced `on`, including after a reload (`:729-731`; results ruling "Cold-floor lockout also applies to forced `on`").
 - **(a) Cold-room floor:** in predictive mode, T < sp − 0.5 while heating is wanted means the full cycle now, and demotion to the fallback for 24 h (`:637-644`). It still yields to a temperature fault and to a valve exercise (`test_cold_floor_still_yields_to_demand_fault_and_exercise`).
 - **Validity of a minute:**
@@ -276,7 +276,7 @@ Pure tests port the v5 suites one to one; they use pytest functions with no hass
     - solar gain 0.01·sin(π(minute_of_day − 600)/360) from 10:00 to 16:00;
     - noise σ 0.05, seed 42, readings rounded to 0.1 °C; start T 21, S 0.8;
     - feasibility guard: assert alpha/beta + min outdoor ≥ sp + 1.
-    - The acceptance is **relative**, as the owner ruled for v5: auto minutes below sp − 0.3 and below sp − 0.7 are each ≤ PI's + 60; auto min T ≥ PI's − 0.1; auto overshoot ≤ PI's + 0.3.
+    - The acceptance is **relative**, as the owner ruled for v5, and applied to the **mean over seeds 0-31 of the per-seed differences auto − PI** (owner, 2026-10-17). The minutes below sp − 0.3 and below sp − 0.7 each average ≤ +60, min T ≥ −0.1 and overshoot ≤ +0.3. Seed 42 is printed only.
     - Absolute cold time under strong unmodelled solar gain is an open problem shared by PI and predictive (results file, "Open"). It is not a requirement here.
   - **Two solar tests, both must pass, with the same unchanged relative margin** (owner, 2026-10-17, "Decision log"):
     - `test_predictive_auto_not_colder_than_pi_with_solar_mismatch_gated` is the **v5 equivalence test**. Demand is gated with v5's hysteresis on the reading: on below 20.7, off at ≥ 21 (`test_closed_loop.py:48-52` at `c761462`). In the port that gating toggles `MinuteInputs.demand` while the setpoint stays 21, so the test runs v5's demand-off path (`_idle`, `:529-538`) and not a setpoint change, which would add the setpoint-change resets (`:547-556`) that v5's gated run does not have. **(Mine; corrected 2026-10-17 after the owner asked whether altering the setpoint was the right way: it was not.)**
