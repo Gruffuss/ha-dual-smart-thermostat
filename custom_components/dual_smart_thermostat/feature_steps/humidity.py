@@ -14,7 +14,6 @@ class HumiditySteps:
 
     def __init__(self):
         """Initialize humidity steps handler."""
-        pass
 
     async def async_step_toggle(
         self,

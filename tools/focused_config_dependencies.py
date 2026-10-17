@@ -11,7 +11,6 @@ from enum import Enum
 import json
 from pathlib import Path
 import re
-from typing import Dict, List, Optional
 
 # Additional guide metadata maintained alongside the dependency graph.
 PRESENCE_PARAMETERS = {
@@ -254,10 +253,10 @@ class ConfigParameter:
 
     name: str
     description: str
-    condition: Optional[str] = None  # When this parameter is relevant
-    enabled_by: Optional[str] = None  # What parameter enables this
-    requires: List[str] = field(default_factory=list)  # Required parameters
-    conflicts_with: List[str] = field(default_factory=list)  # Conflicting parameters
+    condition: str | None = None  # When this parameter is relevant
+    enabled_by: str | None = None  # What parameter enables this
+    requires: list[str] = field(default_factory=list)  # Required parameters
+    conflicts_with: list[str] = field(default_factory=list)  # Conflicting parameters
 
 
 @dataclass
@@ -268,15 +267,15 @@ class ConfigDependency:
     target: str
     type: DependencyType
     description: str
-    example: Optional[str] = None
+    example: str | None = None
 
 
 class FocusedConfigDependencies:
     """Critical configuration parameter dependencies only."""
 
     def __init__(self):
-        self.parameters: Dict[str, ConfigParameter] = {}
-        self.dependencies: List[ConfigDependency] = []
+        self.parameters: dict[str, ConfigParameter] = {}
+        self.dependencies: list[ConfigDependency] = []
         self._initialize_critical_dependencies()
 
     def _initialize_critical_dependencies(self):
@@ -478,7 +477,7 @@ class FocusedConfigDependencies:
             ]
         )
 
-    def get_conditional_parameters(self) -> Dict[str, List[str]]:
+    def get_conditional_parameters(self) -> dict[str, list[str]]:
         """Get parameters that are conditional on others."""
         conditional_map = {}
 
@@ -490,7 +489,7 @@ class FocusedConfigDependencies:
 
         return conditional_map
 
-    def get_parameter_condition(self, param_name: str) -> Optional[str]:
+    def get_parameter_condition(self, param_name: str) -> str | None:
         """Get the condition under which a parameter is relevant."""
         for dep in self.dependencies:
             if dep.target == param_name and dep.type in [
@@ -500,7 +499,7 @@ class FocusedConfigDependencies:
                 return f"Only relevant when '{dep.source}' is configured"
         return None
 
-    def generate_conditional_guide(self) -> Dict:
+    def generate_conditional_guide(self) -> dict:
         """Generate a guide for conditional parameters."""
         guide = {
             "conditional_parameters": {},

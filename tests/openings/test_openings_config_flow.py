@@ -1,5 +1,7 @@
 """Test openings configuration logic."""
 
+import sys
+
 
 def test_openings_processing_logic():
     """Test the openings processing logic without imports."""
@@ -31,10 +33,10 @@ def test_openings_processing_logic():
             if entity_key in config:
                 opening_config = {"entity_id": config[entity_key]}
 
-                if timeout_key in config and config[timeout_key]:
+                if config.get(timeout_key):
                     opening_config["timeout"] = config[timeout_key]
 
-                if closing_timeout_key in config and config[closing_timeout_key]:
+                if config.get(closing_timeout_key):
                     opening_config["closing_timeout"] = config[closing_timeout_key]
 
                 openings.append(opening_config)
@@ -165,10 +167,10 @@ if __name__ == "__main__":
         print("- ✅ Optional timeout settings for opening and closing")
         print("- ✅ Scope configuration for HVAC mode control")
         print("- ✅ Proper data processing and cleanup")
-        exit(0)
+        sys.exit(0)
     except AssertionError:
         print("\n❌ Openings configuration test assertions failed")
-        exit(1)
+        sys.exit(1)
     except Exception as e:
         print(f"\n❌ Openings configuration tests failed with exception: {e}")
-        exit(1)
+        sys.exit(1)

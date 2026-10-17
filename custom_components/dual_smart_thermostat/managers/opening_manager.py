@@ -3,7 +3,6 @@
 import enum
 from itertools import chain
 import logging
-from typing import List
 
 from homeassistant.components.climate import HVACMode
 from homeassistant.const import (
@@ -48,7 +47,7 @@ class OpeningManager:
         self.hass = hass
 
         openings = config.get(CONF_OPENINGS)
-        self.openings_scope: List[OpeningHvacModeScope] = config.get(
+        self.openings_scope: list[OpeningHvacModeScope] = config.get(
             CONF_OPENINGS_SCOPE
         ) or [OpeningHvacModeScope.ALL]
 
@@ -159,12 +158,9 @@ class OpeningManager:
             )
 
             result = is_open
-            if self._is_opening_timed_out(opening, is_open):
-                result = is_open
-
-            # this is to avoid debounce when state change multiple times
-            # inside timeout interval or incorrect detection at startup
-            elif (
+            # The state check avoids debounce when the state changes several
+            # times inside the timeout interval, or on wrong detection at startup
+            if self._is_opening_timed_out(opening, is_open) or (
                 self._opening_curr_state[opening_entity] == is_open
                 or self._opening_curr_state[opening_entity] is None
             ):
@@ -195,16 +191,17 @@ class OpeningManager:
             opening[timeout_attr],
             STATE_OPEN if check_open else STATE_CLOSED,
         )
-        if condition.state(
-            self.hass,
-            opening_entity,
-            STATE_OPEN if check_open else STATE_CLOSED,
-            opening[timeout_attr],
-        ) or condition.state(
-            self.hass,
-            opening_entity,
-            STATE_ON if check_open else STATE_OFF,
-            opening[timeout_attr],
-        ):
-            return True
-        return False
+        return bool(
+            condition.state(
+                self.hass,
+                opening_entity,
+                STATE_OPEN if check_open else STATE_CLOSED,
+                opening[timeout_attr],
+            )
+            or condition.state(
+                self.hass,
+                opening_entity,
+                STATE_ON if check_open else STATE_OFF,
+                opening[timeout_attr],
+            )
+        )

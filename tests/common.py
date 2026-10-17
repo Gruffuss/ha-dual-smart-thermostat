@@ -366,7 +366,7 @@ fire_time_changed = threadsafe_callback_factory(async_fire_time_changed)
 
 def get_scheduled_timer_handles(loop: asyncio.AbstractEventLoop) -> list[TimerHandle]:
     """Return a list of scheduled TimerHandles."""
-    handles: list[TimerHandle] = loop._scheduled  # type: ignore[attr-defined] # noqa: SLF001
+    handles: list[TimerHandle] = loop._scheduled  # type: ignore[attr-defined]
     return handles
 
 

@@ -28,7 +28,7 @@ class TestACOnlyAdvancedSettings:
 
         # Check that advanced_settings section exists
         advanced_field_found = False
-        for key in schema_dict.keys():
+        for key in schema_dict:
             if hasattr(key, "schema") and "advanced_settings" in str(key.schema):
                 advanced_field_found = True
                 break
@@ -57,7 +57,7 @@ class TestACOnlyAdvancedSettings:
 
         # Check that advanced_settings section exists
         advanced_field_found = False
-        for key in schema_dict.keys():
+        for key in schema_dict:
             if hasattr(key, "schema") and "advanced_settings" in str(key.schema):
                 advanced_field_found = True
                 break
@@ -114,7 +114,7 @@ class TestACOnlyAdvancedSettings:
         keep_alive_found = False
         min_dur_found = False
 
-        for key in schema_dict.keys():
+        for key in schema_dict:
             if hasattr(key, "schema"):
                 # Check if this is the keep_alive or min_cycle_duration field
                 if "keep_alive" in str(key):

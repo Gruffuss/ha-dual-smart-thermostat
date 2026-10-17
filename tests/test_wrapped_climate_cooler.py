@@ -37,7 +37,7 @@ import pytest
 
 from custom_components.dual_smart_thermostat.const import DOMAIN
 
-from . import common, setup_sensor  # noqa: F401
+from . import common, setup_sensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -348,7 +348,7 @@ async def test_wrapped_climate_swing_mode_passthrough(hass: HomeAssistant) -> No
 @pytest.mark.asyncio
 async def test_wrapped_climate_capabilities_detected(hass: HomeAssistant) -> None:
     """The wrapped entity's fan/swing capabilities are detected by the device."""
-    from custom_components.dual_smart_thermostat.hvac_device.wrapped_climate_device import (  # noqa: E501
+    from custom_components.dual_smart_thermostat.hvac_device.wrapped_climate_device import (
         WrappedClimateDevice,
     )
 

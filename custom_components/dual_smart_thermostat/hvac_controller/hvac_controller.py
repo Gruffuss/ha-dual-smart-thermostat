@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import timedelta
 import enum
 import logging
-from typing import Callable
 
 from homeassistant.components.climate import HVACMode
 from homeassistant.core import HomeAssistant

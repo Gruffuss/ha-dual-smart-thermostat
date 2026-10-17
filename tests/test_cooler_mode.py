@@ -118,7 +118,7 @@ async def test_unique_id(
     assert entry.unique_id == unique_id
 
 
-async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:  # noqa: F811
+async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:
     """Test the setting of defaults to unknown."""
     heater_switch = "input_boolean.test"
 
@@ -141,7 +141,7 @@ async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:  # noqa: 
 
 async def test_setup_gets_current_temp_from_sensor(
     hass: HomeAssistant,
-) -> None:  # noqa: F811
+) -> None:
     """Test that current temperature is updated on entity addition."""
     hass.config.units = METRIC_SYSTEM
     setup_sensor(hass, 18)
@@ -502,7 +502,7 @@ async def test_turn_away_mode_on_cooling(
     setup_sensor(hass, 25)
     await hass.async_block_till_done()
     state = hass.states.get(common.ENTITY)
-    assert set(state.attributes.get("preset_modes")) == set([PRESET_NONE, PRESET_AWAY])
+    assert set(state.attributes.get("preset_modes")) == {PRESET_NONE, PRESET_AWAY}
     await common.async_set_temperature(hass, 19)
     await common.async_set_preset_mode(hass, PRESET_AWAY)
     state = hass.states.get(common.ENTITY)

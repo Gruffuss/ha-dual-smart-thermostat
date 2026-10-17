@@ -25,7 +25,7 @@ def test_user_experience_flow():
 
     print("🏠 System shows basic form with these options:")
     basic_fields = []
-    for key in basic_schema.schema.keys():
+    for key in basic_schema.schema:
         if hasattr(key, "schema"):
             basic_fields.append(key.schema)
 
@@ -128,7 +128,7 @@ def test_feature_discoverability():
     basic_schema = get_ac_only_features_schema()
 
     has_advanced_toggle = False
-    for key in basic_schema.schema.keys():
+    for key in basic_schema.schema:
         if hasattr(key, "schema") and key.schema == "configure_advanced":
             has_advanced_toggle = True
             break
@@ -158,11 +158,11 @@ def test_progressive_disclosure():
     basic_fields = set()
     advanced_fields = set()
 
-    for key in basic_schema.schema.keys():
+    for key in basic_schema.schema:
         if hasattr(key, "schema"):
             basic_fields.add(key.schema)
 
-    for key in advanced_schema.schema.keys():
+    for key in advanced_schema.schema:
         if hasattr(key, "schema"):
             advanced_fields.add(key.schema)
 

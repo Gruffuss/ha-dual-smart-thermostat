@@ -31,9 +31,12 @@ async def test_ac_only_features_flow():
         result = await flow._determine_next_step()
 
         # Check if it's a FlowResult with step_id 'ac_only_features'
-        if hasattr(result, "step_id") and result.step_id == "ac_only_features":
-            print("✅ AC-only features step appears correctly")
-        elif isinstance(result, dict) and result.get("step_id") == "ac_only_features":
+        if (
+            hasattr(result, "step_id")
+            and result.step_id == "ac_only_features"
+            or isinstance(result, dict)
+            and result.get("step_id") == "ac_only_features"
+        ):
             print("✅ AC-only features step appears correctly")
         else:
             print(

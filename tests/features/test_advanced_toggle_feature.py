@@ -33,11 +33,11 @@ def test_basic_schema():
     schema_dict = schema.schema
     present_fields = []
 
-    for key in schema_dict.keys():
+    for key in schema_dict:
         if hasattr(key, "schema") and key.schema in basic_fields:
             present_fields.append(key.schema)
 
-    print("✅ Found {} basic configuration fields".format(len(present_fields)))
+    print(f"✅ Found {len(present_fields)} basic configuration fields")
 
     # Verify defaults by validating empty input (should apply defaults)
     try:
@@ -55,12 +55,10 @@ def test_basic_schema():
         for field, expected_value in expected_defaults.items():
             actual_value = result.get(field)
             if actual_value == expected_value:
-                print("✅ {} default: {}".format(field, actual_value))
+                print(f"✅ {field} default: {actual_value}")
             else:
                 print(
-                    "❌ {} default: expected {}, got {}".format(
-                        field, expected_value, actual_value
-                    )
+                    f"❌ {field} default: expected {expected_value}, got {actual_value}"
                 )
                 return False
 
@@ -90,7 +88,7 @@ def test_advanced_schema():
     # Count configuration fields
     config_count = 0
 
-    for key in schema_dict.keys():
+    for key in schema_dict:
         if hasattr(key, "schema"):
             field_name = key.schema
             if field_name in config_fields:
@@ -256,7 +254,7 @@ def main():
             else:
                 failed += 1
         except Exception as e:
-            print("❌ Test {} failed with exception:".format(test.__name__), e)
+            print(f"❌ Test {test.__name__} failed with exception:", e)
             failed += 1
 
     print("\n" + "=" * 70)

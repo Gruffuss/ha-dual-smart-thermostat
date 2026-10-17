@@ -248,19 +248,22 @@ class HVACDeviceFactory:
         # configured the fan already belongs to CoolerFanDevice, so only take
         # it over when the user opted in - otherwise fan_on_with_heater has no
         # effect on heater+cooler systems (#637).
-        if heater_device is not None and fan_device is not None:
-            if (
+        if (
+            heater_device is not None
+            and fan_device is not None
+            and (
                 cooler_device is None
                 or self._features.is_configured_for_fan_on_with_heater
-            ):
-                heater_device = HeaterFanDevice(
-                    self.hass,
-                    [heater_device, fan_device],
-                    self._initial_hvac_mode,
-                    environment,
-                    openings,
-                    self._features,
-                )
+            )
+        ):
+            heater_device = HeaterFanDevice(
+                self.hass,
+                [heater_device, fan_device],
+                self._initial_hvac_mode,
+                environment,
+                openings,
+                self._features,
+            )
 
         _LOGGER.debug(
             "heater_device: %s, cooler_device: %s", heater_device, cooler_device

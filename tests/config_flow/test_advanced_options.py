@@ -90,7 +90,7 @@ def test_user_workflow():
 
     # Step 2: User sees clean interface
     print("2. 👤 User sees clean AC features form:")
-    for key in schema_step1.schema.keys():
+    for key in schema_step1.schema:
         if hasattr(key, "schema"):
             field_name = key.schema
             if field_name.startswith("configure_"):
@@ -163,7 +163,6 @@ def test_edge_cases():
 
     # Edge case 3: Config with configure_advanced=False explicitly
     print("Edge case 3: Config with configure_advanced=False")
-    _false_config = {"configure_advanced": False}  # noqa: F841
     schema3 = get_ac_only_features_schema()
     print(f"✅ False config → {len(schema3.schema)} fields (should be 5)")
 

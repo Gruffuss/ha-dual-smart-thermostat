@@ -413,7 +413,7 @@ class TestSimpleHeaterModeInteractions:
         # Check available features in schema
         result = await flow.async_step_features()
         schema = result["data_schema"].schema
-        field_names = [key.schema for key in schema.keys() if hasattr(key, "schema")]
+        field_names = [key.schema for key in schema if hasattr(key, "schema")]
 
         # simple_heater should not have fan or humidity features
         assert "configure_fan" not in field_names

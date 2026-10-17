@@ -32,7 +32,7 @@ class TestHeaterCoolerSchema:
         schema = get_heater_cooler_schema(defaults=None, include_name=True)
 
         # Extract field names from schema
-        field_names = [k.schema for k in schema.schema.keys() if hasattr(k, "schema")]
+        field_names = [k.schema for k in schema.schema if hasattr(k, "schema")]
 
         assert CONF_NAME in field_names
         assert CONF_SENSOR in field_names
@@ -49,7 +49,7 @@ class TestHeaterCoolerSchema:
         schema = get_heater_cooler_schema(defaults=None, include_name=False)
 
         # Extract field names from schema
-        field_names = [k.schema for k in schema.schema.keys() if hasattr(k, "schema")]
+        field_names = [k.schema for k in schema.schema if hasattr(k, "schema")]
 
         assert CONF_NAME not in field_names
         assert CONF_SENSOR in field_names
@@ -75,7 +75,7 @@ class TestHeaterCoolerSchema:
         schema = get_heater_cooler_schema(defaults=defaults, include_name=True)
 
         # Verify defaults are set
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema"):
                 field_name = key.schema
                 if field_name in defaults:
@@ -107,7 +107,7 @@ class TestHeaterCoolerSchema:
 
         # For fields without defaults, they should use vol.UNDEFINED
         # Required fields should not have defaults
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema"):
                 # For required fields, default should be UNDEFINED or not present
                 if isinstance(key, vol.Required):
@@ -124,7 +124,7 @@ class TestHeaterCoolerSchema:
 
         # Verify advanced_settings exists in schema
         field_names = [
-            k.schema if hasattr(k, "schema") else str(k) for k in schema.schema.keys()
+            k.schema if hasattr(k, "schema") else str(k) for k in schema.schema
         ]
 
         # Advanced settings should be present
@@ -136,7 +136,7 @@ class TestHeaterCoolerSchema:
 
         # Find advanced_settings section
         advanced_settings_key = None
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema") and key.schema == "advanced_settings":
                 advanced_settings_key = key
                 break
@@ -151,7 +151,7 @@ class TestHeaterCoolerSchema:
         schema = get_heater_cooler_schema(defaults=None, include_name=True)
 
         # Find heat_cool_mode field
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema") and key.schema == CONF_HEAT_COOL_MODE:
                 # Should have default of False
                 assert hasattr(key, "default")
@@ -168,7 +168,7 @@ class TestHeaterCoolerSchema:
         required_fields = []
         optional_fields = []
 
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema"):
                 if isinstance(key, vol.Required):
                     required_fields.append(key.schema)

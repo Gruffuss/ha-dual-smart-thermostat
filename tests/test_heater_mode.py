@@ -125,7 +125,7 @@ async def test_unique_id(
     assert entry.unique_id == unique_id
 
 
-async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:  # noqa: F811
+async def test_setup_defaults_to_unknown(hass: HomeAssistant) -> None:
     """Test the setting of defaults to unknown."""
     heater_switch = "input_boolean.test"
 
@@ -351,7 +351,7 @@ async def test_sensor_bad_value(
     assert state.attributes.get("current_temperature") == temp
 
 
-async def test_sensor_unknown(hass: HomeAssistant) -> None:  # noqa: F811
+async def test_sensor_unknown(hass: HomeAssistant) -> None:
     """Test when target sensor is Unknown."""
     hass.states.async_set("sensor.unknown", STATE_UNKNOWN)
     assert await async_setup_component(
@@ -371,7 +371,7 @@ async def test_sensor_unknown(hass: HomeAssistant) -> None:  # noqa: F811
     assert state.attributes.get("current_temperature") is None
 
 
-async def test_sensor_unavailable(hass: HomeAssistant) -> None:  # noqa: F811
+async def test_sensor_unavailable(hass: HomeAssistant) -> None:
     """Test when target sensor is Unknown."""
     hass.states.async_set("sensor.unknown", STATE_UNAVAILABLE)
     assert await async_setup_component(
@@ -414,7 +414,7 @@ async def test_floor_sensor_bad_value(
     assert state.attributes.get("current_floor_temperature") == temp
 
 
-async def test_floor_sensor_unknown(hass: HomeAssistant) -> None:  # noqa: F811
+async def test_floor_sensor_unknown(hass: HomeAssistant) -> None:
     """Test when target sensor is Unknown."""
     hass.states.async_set("sensor.unknown", STATE_UNKNOWN)
     hass.states.async_set("sensor.floor_unknown", STATE_UNKNOWN)
@@ -437,7 +437,7 @@ async def test_floor_sensor_unknown(hass: HomeAssistant) -> None:  # noqa: F811
     assert state.attributes.get("current_floor_temperature") is None
 
 
-async def test_floor_sensor_unavailable(hass: HomeAssistant) -> None:  # noqa: F811
+async def test_floor_sensor_unavailable(hass: HomeAssistant) -> None:
     """Test when target sensor is Unknown."""
     hass.states.async_set("sensor.unknown", STATE_UNAVAILABLE)
     hass.states.async_set("sensor.floor_unknown", STATE_UNAVAILABLE)
@@ -462,7 +462,7 @@ async def test_floor_sensor_unavailable(hass: HomeAssistant) -> None:  # noqa: F
 
 async def test_heater_unknown_to_available(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
-) -> None:  # noqa: F811
+) -> None:
     """Test when heater turns on after been Unknown and then becomes available."""
     heater_switch = "input_boolean.test"
     # hass.states.async_set(heater_switch, STATE_UNKNOWN)
@@ -1228,7 +1228,7 @@ async def test_mode_change_heater_trigger_not_long_enough(
 
 
 # async def test_precision(
-#     hass: HomeAssistant, setup_comp_heat_cycle_precision  # noqa: F811
+#     hass: HomeAssistant, setup_comp_heat_cycle_precision
 # ) -> None:
 #     """Test that setting precision to tenths works as intended."""
 #     hass.config.units = US_CUSTOMARY_SYSTEM

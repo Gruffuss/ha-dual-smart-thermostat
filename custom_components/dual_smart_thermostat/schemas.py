@@ -188,7 +188,7 @@ def validate_template_or_number(value: Any) -> Any:
         except vol.Invalid as e:
             raise vol.Invalid(
                 f"Value must be a number or valid template. "
-                f"Template syntax error: {str(e)}"
+                f"Template syntax error: {e!s}"
             ) from e
 
     raise vol.Invalid(
@@ -1093,7 +1093,7 @@ def get_core_schema(
 
 
 def get_openings_selection_schema(
-    collected_config: dict[str, Any] = None, defaults: list[str] = None
+    collected_config: dict[str, Any] | None = None, defaults: list[str] | None = None
 ):
     """Get schema for selecting opening entities."""
     # log the defaults
@@ -1113,7 +1113,7 @@ def get_openings_selection_schema(
 
 
 def get_presence_selection_schema(
-    collected_config: dict[str, Any] = None, defaults: list[str] = None
+    collected_config: dict[str, Any] | None = None, defaults: list[str] | None = None
 ):
     """Get schema for selecting presence sensor entities."""
     _LOGGER.debug("Presence selection defaults: %s", defaults)

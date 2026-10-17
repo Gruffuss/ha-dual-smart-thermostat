@@ -28,8 +28,7 @@ from custom_components.dual_smart_thermostat.sensor import (
     STATE_NONE,
     HvacActionReasonSensor,
 )
-from tests import common
-from tests import setup_comp_heat  # noqa: F401
+from tests import common, setup_comp_heat  # noqa: F401
 
 
 def test_hvac_action_reason_auto_values_exist() -> None:

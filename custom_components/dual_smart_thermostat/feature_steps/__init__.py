@@ -8,10 +8,10 @@ from .presence import PresenceSteps
 from .presets import PresetsSteps
 
 __all__ = [
+    "FanSteps",
+    "FloorSteps",
+    "HumiditySteps",
     "OpeningsSteps",
     "PresenceSteps",
-    "FanSteps",
-    "HumiditySteps",
     "PresetsSteps",
-    "FloorSteps",
 ]

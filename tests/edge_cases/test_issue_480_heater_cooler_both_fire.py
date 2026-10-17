@@ -220,7 +220,7 @@ class TestIssue480HeaterCoolerBothFire:
     async def test_heat_cool_mode_temp_within_range_neither_fires(
         self,
         hass: HomeAssistant,
-        setup_comp_issue_480_config1,  # noqa: F811
+        setup_comp_issue_480_config1,
     ) -> None:
         """Test that when temperature is within range, neither heater nor cooler fires.
 
@@ -270,7 +270,7 @@ class TestIssue480HeaterCoolerBothFire:
     async def test_heat_cool_mode_temp_too_cold_only_heater_fires(
         self,
         hass: HomeAssistant,
-        setup_comp_issue_480_config1,  # noqa: F811
+        setup_comp_issue_480_config1,
     ) -> None:
         """Test that when temperature is too cold, only heater fires.
 
@@ -317,7 +317,7 @@ class TestIssue480HeaterCoolerBothFire:
     async def test_heat_cool_mode_temp_too_hot_only_cooler_fires(
         self,
         hass: HomeAssistant,
-        setup_comp_issue_480_config1,  # noqa: F811
+        setup_comp_issue_480_config1,
     ) -> None:
         """Test that when temperature is too hot, only cooler fires.
 
@@ -363,7 +363,7 @@ class TestIssue480HeaterCoolerBothFire:
     async def test_switch_from_off_to_heat_cool_temp_in_range(
         self,
         hass: HomeAssistant,
-        setup_comp_issue_480_config2,  # noqa: F811
+        setup_comp_issue_480_config2,
     ) -> None:
         """Test switching from OFF to HEAT_COOL when temp is in range.
 
@@ -416,7 +416,7 @@ class TestIssue480HeaterCoolerBothFire:
     async def test_switch_from_off_to_heat_cool_temp_too_cold(
         self,
         hass: HomeAssistant,
-        setup_comp_issue_480_config2,  # noqa: F811
+        setup_comp_issue_480_config2,
     ) -> None:
         """Test switching from OFF to HEAT_COOL when temp is too cold.
 
@@ -450,7 +450,7 @@ class TestIssue480HeaterCoolerBothFire:
     async def test_switch_from_off_to_heat_cool_temp_too_hot(
         self,
         hass: HomeAssistant,
-        setup_comp_issue_480_config2,  # noqa: F811
+        setup_comp_issue_480_config2,
     ) -> None:
         """Test switching from OFF to HEAT_COOL when temp is too hot.
 

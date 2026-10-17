@@ -43,12 +43,9 @@ def demo_openings_scope_translations():
             # Get the schema (this calls the internal method that builds scope options)
             import asyncio
 
-            async def get_schema():
-                return await openings.async_step_config(
-                    flow, None, config, lambda: {"type": "form"}
-                )
-
-            result = asyncio.run(get_schema())
+            result = asyncio.run(
+                openings.async_step_config(flow, None, config, lambda: {"type": "form"})
+            )
 
             # Extract scope options from schema
             schema_dict = result["data_schema"].schema

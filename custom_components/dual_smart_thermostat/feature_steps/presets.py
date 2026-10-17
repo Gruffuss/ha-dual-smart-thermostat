@@ -17,7 +17,6 @@ class PresetsSteps:
 
     def __init__(self):
         """Initialize presets steps handler."""
-        pass
 
     async def async_step_selection(
         self,
@@ -186,7 +185,7 @@ class PresetsSteps:
         }
 
         # Check each possible preset key
-        for preset_display_name, preset_normalized_name in CONF_PRESETS.items():
+        for preset_normalized_name in CONF_PRESETS.values():
             # Check if this preset exists in the new format
             if preset_normalized_name in config and isinstance(
                 config[preset_normalized_name], dict

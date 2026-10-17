@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
-from typing import Any, Mapping, cast
+from typing import Any, cast
 
 from homeassistant.config_entries import SOURCE_RECONFIGURE, ConfigFlow
 from homeassistant.const import CONF_NAME

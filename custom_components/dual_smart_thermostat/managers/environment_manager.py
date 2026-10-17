@@ -591,26 +591,22 @@ class EnvironmentManager(StateManager):
     @property
     def is_floor_hot(self) -> bool:
         """If the floor temp is above limit."""
-        if (
-            (self._sensor_floor is not None)
-            and (self._max_floor_temp is not None)
-            and (self._cur_floor_temp is not None)
-            and (self.cur_floor_temp >= self.max_floor_temp)
-        ):
-            return True
-        return False
+        return bool(
+            self._sensor_floor is not None
+            and self._max_floor_temp is not None
+            and self._cur_floor_temp is not None
+            and self.cur_floor_temp >= self.max_floor_temp
+        )
 
     @property
     def is_floor_cold(self) -> bool:
         """If the floor temp is below limit."""
-        if (
-            (self._sensor_floor is not None)
-            and (self._min_floor_temp is not None)
-            and (self._cur_floor_temp is not None)
-            and (self.cur_floor_temp <= self.min_floor_temp)
-        ):
-            return True
-        return False
+        return bool(
+            self._sensor_floor is not None
+            and self._min_floor_temp is not None
+            and self._cur_floor_temp is not None
+            and self.cur_floor_temp <= self.min_floor_temp
+        )
 
     @callback
     def update_temp_from_state(self, state: State) -> None:

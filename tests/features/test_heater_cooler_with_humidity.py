@@ -159,7 +159,7 @@ class TestHeaterCoolerWithHumidity:
         schema = get_humidity_schema(defaults=None)
 
         # Extract field names from schema
-        field_names = [k.schema for k in schema.schema.keys() if hasattr(k, "schema")]
+        field_names = [k.schema for k in schema.schema if hasattr(k, "schema")]
 
         # Humidity schema should include required fields
         assert CONF_HUMIDITY_SENSOR in field_names
@@ -177,7 +177,7 @@ class TestHeaterCoolerWithHumidity:
         schema = get_humidity_schema(defaults=None)
 
         # Find humidity_sensor field
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema") and key.schema == CONF_HUMIDITY_SENSOR:
                 # Could be Optional or Required depending on implementation
                 # If optional, should allow vol.UNDEFINED

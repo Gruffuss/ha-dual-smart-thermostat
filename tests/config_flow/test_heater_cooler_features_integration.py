@@ -741,7 +741,7 @@ class TestHeaterCoolerAvailableFeatures:
         result = await flow.async_step_features()
         schema = result["data_schema"].schema
 
-        field_names = [key.schema for key in schema.keys() if hasattr(key, "schema")]
+        field_names = [key.schema for key in schema if hasattr(key, "schema")]
 
         # All features should be present
         expected_features = [

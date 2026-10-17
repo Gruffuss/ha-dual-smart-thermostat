@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 import logging
-from typing import Callable
 
 from homeassistant.components.climate import HVACMode
 from homeassistant.const import STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -82,7 +82,9 @@ class CoolerFanDevice(MultiHvacDevice):
         self._hvac_mode = hvac_mode
         self.set_sub_devices_hvac_mode(hvac_mode)
 
-    async def async_on_startup(self, async_write_ha_state_cb: Callable = None) -> None:
+    async def async_on_startup(
+        self, async_write_ha_state_cb: Callable | None = None
+    ) -> None:
         await super().async_on_startup(async_write_ha_state_cb)
 
         # Only track state changes if it's an entity_id (string), not a boolean
@@ -119,7 +121,6 @@ class CoolerFanDevice(MultiHvacDevice):
 
     async def _async_check_device_initial_state(self) -> None:
         """Prevent the device from keep running if HVACMode.OFF."""
-        pass
 
     async def async_control_hvac(self, time=None, force=False):
         _LOGGER.info({self.__class__.__name__})
@@ -174,7 +175,7 @@ class CoolerFanDevice(MultiHvacDevice):
         if self.cooler_device.is_on and not has_cooler_run_long_enough:
             _LOGGER.debug(
                 "Cooler has not run long enough at: %s",
-                datetime.now(timezone.utc),
+                datetime.now(UTC),
             )
             self.HVACActionReason = HVACActionReason.MIN_CYCLE_DURATION_NOT_REACHED
             return

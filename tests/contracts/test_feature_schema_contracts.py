@@ -134,7 +134,7 @@ class TestFeatureSchemaContracts:
         schema = result["data_schema"].schema
 
         # Extract field names from schema
-        field_names = [key.schema for key in schema.keys() if hasattr(key, "schema")]
+        field_names = [key.schema for key in schema if hasattr(key, "schema")]
 
         # Verify expected fields are present (based on README.md and data-model.md)
         expected_fields = [
@@ -238,7 +238,7 @@ class TestFeatureSchemaContracts:
         schema = result["data_schema"].schema
 
         # Check for defaults on numeric fields
-        for key in schema.keys():
+        for key in schema:
             if hasattr(key, "schema"):
                 if key.schema in [CONF_MIN_FLOOR_TEMP, CONF_MAX_FLOOR_TEMP]:
                     # Numeric fields should have defaults or be optional
@@ -265,7 +265,7 @@ class TestFeatureSchemaContracts:
 
         # Extract field with CONF_FAN_ON_WITH_AC
         field_found = False
-        for key in schema.keys():
+        for key in schema:
             if hasattr(key, "schema") and key.schema == CONF_FAN_ON_WITH_AC:
                 field_found = True
                 # This field should be a boolean or have a boolean-like selector
@@ -301,7 +301,7 @@ class TestFeatureSchemaContracts:
             "moist_tolerance",
         ]
 
-        field_names = [key.schema for key in schema.keys() if hasattr(key, "schema")]
+        field_names = [key.schema for key in schema if hasattr(key, "schema")]
 
         for field in numeric_fields:
             assert field in field_names, f"Humidity schema should contain {field}"
@@ -385,7 +385,7 @@ class TestFeatureSchemaDefaults:
 
         # Extract defaults (if present)
         defaults = {}
-        for key in schema.keys():
+        for key in schema:
             if hasattr(key, "schema") and hasattr(key, "default"):
                 defaults[key.schema] = key.default
 

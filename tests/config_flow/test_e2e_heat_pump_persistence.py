@@ -767,7 +767,7 @@ class TestHeatPumpModeSpecificTolerancesPersistence:
 
         # Find advanced_settings section
         advanced_key = next(
-            (key for key in init_schema.keys() if "advanced_settings" in str(key)),
+            (key for key in init_schema if "advanced_settings" in str(key)),
             None,
         )
         assert advanced_key is not None, "advanced_settings section not found in schema"
@@ -836,7 +836,7 @@ class TestHeatPumpModeSpecificTolerancesPersistence:
         # Step 10: Verify mode-specific tolerances still pre-filled with updated values
         init_schema2 = result2["data_schema"].schema
         advanced_key2 = next(
-            (key for key in init_schema2.keys() if "advanced_settings" in str(key)),
+            (key for key in init_schema2 if "advanced_settings" in str(key)),
             None,
         )
         advanced_schema2 = init_schema2[advanced_key2]
@@ -923,7 +923,7 @@ class TestHeatPumpMixedTolerancesPersistence:
 
         # Find advanced_settings section
         advanced_key = next(
-            (key for key in init_schema.keys() if "advanced_settings" in str(key)),
+            (key for key in init_schema if "advanced_settings" in str(key)),
             None,
         )
         assert advanced_key is not None, "advanced_settings section not found in schema"

@@ -31,7 +31,7 @@ class TestHeatPumpSchema:
         schema = get_heat_pump_schema(defaults=None, include_name=True)
 
         # Extract field names from schema
-        field_names = [k.schema for k in schema.schema.keys() if hasattr(k, "schema")]
+        field_names = [k.schema for k in schema.schema if hasattr(k, "schema")]
 
         assert CONF_NAME in field_names
         assert CONF_SENSOR in field_names
@@ -47,7 +47,7 @@ class TestHeatPumpSchema:
         schema = get_heat_pump_schema(defaults=None, include_name=False)
 
         # Extract field names from schema
-        field_names = [k.schema for k in schema.schema.keys() if hasattr(k, "schema")]
+        field_names = [k.schema for k in schema.schema if hasattr(k, "schema")]
 
         assert CONF_NAME not in field_names
         assert CONF_SENSOR in field_names
@@ -71,7 +71,7 @@ class TestHeatPumpSchema:
         schema = get_heat_pump_schema(defaults=defaults, include_name=True)
 
         # Verify defaults are set
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema"):
                 field_name = key.schema
                 if field_name in defaults:
@@ -106,11 +106,11 @@ class TestHeatPumpSchema:
         schema = get_heat_pump_schema(defaults=defaults, include_name=True)
 
         # Verify heat_pump_cooling field exists
-        field_names = [k.schema for k in schema.schema.keys() if hasattr(k, "schema")]
+        field_names = [k.schema for k in schema.schema if hasattr(k, "schema")]
         assert CONF_HEAT_PUMP_COOLING in field_names
 
         # Verify the default value is set correctly
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema") and key.schema == CONF_HEAT_PUMP_COOLING:
                 if hasattr(key, "default"):
                     default_value = (
@@ -128,7 +128,7 @@ class TestHeatPumpSchema:
 
         # For fields without defaults, they should use vol.UNDEFINED
         # Required fields should not have defaults
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema"):
                 # For required fields, default should be UNDEFINED or not present
                 if isinstance(key, vol.Required):
@@ -145,7 +145,7 @@ class TestHeatPumpSchema:
 
         # Verify advanced_settings exists in schema
         field_names = [
-            k.schema if hasattr(k, "schema") else str(k) for k in schema.schema.keys()
+            k.schema if hasattr(k, "schema") else str(k) for k in schema.schema
         ]
 
         # Advanced settings should be present
@@ -157,7 +157,7 @@ class TestHeatPumpSchema:
 
         # Find advanced_settings section
         advanced_settings_key = None
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema") and key.schema == "advanced_settings":
                 advanced_settings_key = key
                 break
@@ -176,7 +176,7 @@ class TestHeatPumpSchema:
         schema = get_heat_pump_schema(defaults=None, include_name=True)
 
         # Find heat_pump_cooling field
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema") and key.schema == CONF_HEAT_PUMP_COOLING:
                 # Should have default of vol.UNDEFINED for optional entity field
                 assert hasattr(key, "default")
@@ -193,7 +193,7 @@ class TestHeatPumpSchema:
         required_fields = []
         optional_fields = []
 
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema"):
                 if isinstance(key, vol.Required):
                     required_fields.append(key.schema)
@@ -221,7 +221,7 @@ class TestHeatPumpSchema:
         schema = get_heat_pump_schema(defaults=defaults, include_name=True)
 
         # Find the heat_pump_cooling field and verify it has the default
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema") and key.schema == CONF_HEAT_PUMP_COOLING:
                 if hasattr(key, "default"):
                     default_value = (

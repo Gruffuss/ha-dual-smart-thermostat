@@ -1,6 +1,6 @@
+from collections.abc import Callable
 from datetime import timedelta
 import logging
-from typing import Callable
 
 from homeassistant.components.climate import HVACMode
 from homeassistant.components.valve import DOMAIN as VALVE_DOMAIN
@@ -72,11 +72,10 @@ class GenericHvacController(HvacController):
             self.entity_id,
             on_state,
         )
-        if self.entity_id is not None and self.hass.states.is_state(
-            self.entity_id, on_state
-        ):
-            return True
-        return False
+        return bool(
+            self.entity_id is not None
+            and self.hass.states.is_state(self.entity_id, on_state)
+        )
 
     def ran_long_enough(self) -> bool:
         if self.is_active:

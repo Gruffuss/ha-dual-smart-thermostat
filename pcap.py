@@ -8,6 +8,7 @@ It intentionally implements only a small surface: findalldevs, open_live,
 compile, setfilter, close, next_ex. Not a full replacement for pcapy/pypcap.
 """
 
+import contextlib
 from ctypes import (
     CDLL,
     POINTER,
@@ -171,10 +172,8 @@ def compile_filter_on_device(filter_expr):
             raise OSError("pcap_compile failed")
     _pcap.pcap_freecode(byref(prog))
     # close dead handle if pcap_close exists
-    try:
+    with contextlib.suppress(Exception):
         _pcap.pcap_close(dead)
-    except Exception:
-        pass
 
 
 if __name__ == "__main__":

@@ -18,16 +18,9 @@ def extract_scope_options_from_schema(schema_dict):
     """Helper function to extract scope options from schema."""
     for key, value in schema_dict.items():
         # Check if this is the openings_scope field
-        if hasattr(key, "key") and key.key == CONF_OPENINGS_SCOPE:
-            options = value.config.get("options", [])
-            # Handle both old format (list of dicts) and new format (list of strings)
-            if options and isinstance(options[0], str):
-                # New format: list of strings (translated options)
-                return options
-            else:
-                # Old format: list of dicts with value/label
-                return options
-        elif hasattr(key, "schema") and "openings_scope" in str(key.schema):
+        if (hasattr(key, "key") and key.key == CONF_OPENINGS_SCOPE) or (
+            hasattr(key, "schema") and "openings_scope" in str(key.schema)
+        ):
             options = value.config.get("options", [])
             # Handle both old format (list of dicts) and new format (list of strings)
             if options and isinstance(options[0], str):

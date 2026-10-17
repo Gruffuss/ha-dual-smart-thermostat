@@ -208,7 +208,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
             return
         try:
             data = await self._store.async_load()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOGGER.warning("Cannot load predictive state; starting fresh: %s", exc)
             data = None
         if self._removed:

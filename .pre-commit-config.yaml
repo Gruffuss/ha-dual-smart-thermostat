@@ -1,28 +1,28 @@
 repos:
   - repo: https://github.com/psf/black-pre-commit-mirror
-    rev: 24.2.0
+    rev: 26.10.1
     hooks:
       - id: black
         language_version: python3.13
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.6
+    rev: v2.4.3
     hooks:
       - id: codespell
         entry: codespell
         language: python
         types: [text]
-        # Exclude translation JSON files except the canonical English file
-        # This exclude stops codespell running on any translations path except en.json
-        exclude: '(^custom_components/dual_smart_thermostat/translations/(?!en.json).*$)|(^.*/translations/.*$)'
+        # Skip non-English translations (real words in other languages);
+        # en.json is still checked. Same rule as [codespell] skip in setup.cfg.
+        exclude: '^custom_components/dual_smart_thermostat/translations/(?!en\.json$)'
 
   - repo: https://github.com/pycqa/flake8
-    rev: '7.0.0'
+    rev: '7.4.1'
     hooks:
       - id: flake8
 
   - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+    rev: 9.0.2
     hooks:
       - id: isort
 

@@ -28,7 +28,6 @@ class PresenceSteps:
 
     def __init__(self):
         """Initialize presence steps handler."""
-        pass
 
     async def _call_next_step(self, next_step_handler):
         """Call next_step_handler and await only if it returns an awaitable."""
@@ -235,10 +234,9 @@ class PresenceSteps:
             # First step: a selection-only submission renders the detailed form.
             if user_input.get("selected_presence") and not any(
                 k
-                for k in user_input.keys()
+                for k in user_input
                 if k == CONF_PRESENCE_SCOPE
-                or k.endswith("_timeout_present")
-                or k.endswith("_timeout_absent")
+                or k.endswith(("_timeout_present", "_timeout_absent"))
             ):
                 collected_config["selected_presence"] = user_input["selected_presence"]
                 return await self.async_step_config(

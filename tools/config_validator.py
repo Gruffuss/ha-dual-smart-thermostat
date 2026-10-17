@@ -6,7 +6,7 @@ This script validates configurations against critical parameter dependencies,
 focusing only on parameters that require other parameters to function.
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import yaml
 
@@ -92,8 +92,8 @@ class ConfigValidator:
         ]
 
     def validate_config(
-        self, config: Dict[str, Any]
-    ) -> Tuple[bool, List[str], List[str]]:
+        self, config: dict[str, Any]
+    ) -> tuple[bool, list[str], list[str]]:
         """
         Validate configuration against dependencies.
 
@@ -137,11 +137,8 @@ class ConfigValidator:
                 and param2 in config
                 and config[param1] is not None
                 and config[param2] is not None
-            ):
-                if config[param1] == config[param2]:
-                    errors.append(
-                        f"Conflict: {message} (both set to '{config[param1]}')"
-                    )
+            ) and config[param1] == config[param2]:
+                errors.append(f"Conflict: {message} (both set to '{config[param1]}')")
 
         # Check overrides
         for primary, secondary, message in self.overrides:
@@ -155,7 +152,7 @@ class ConfigValidator:
 
         return len(errors) == 0, errors, warnings
 
-    def suggest_fixes(self, config: Dict[str, Any]) -> List[str]:
+    def suggest_fixes(self, config: dict[str, Any]) -> list[str]:
         """Suggest fixes for configuration issues."""
         suggestions = []
 
@@ -169,7 +166,7 @@ class ConfigValidator:
 
         return suggestions
 
-    def get_feature_groups(self, config: Dict[str, Any]) -> Dict[str, Dict]:
+    def get_feature_groups(self, config: dict[str, Any]) -> dict[str, dict]:
         """Analyze configuration by feature groups."""
         features = {
             "secondary_heating": {
@@ -229,7 +226,7 @@ class ConfigValidator:
         }
 
         # Find configured parameters for each feature
-        for feature_name, feature_info in features.items():
+        for feature_info in features.values():
             for param in feature_info["parameters"]:
                 if param in config and config[param] is not None:
                     feature_info["configured"].append(param)

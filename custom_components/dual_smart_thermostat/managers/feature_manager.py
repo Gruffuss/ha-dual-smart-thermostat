@@ -157,10 +157,7 @@ class FeatureManager(StateManager):
         if self._aux_heater_entity_id is None:
             return False
 
-        if self._aux_heater_timeout is None:
-            return False
-
-        return True
+        return self._aux_heater_timeout is not None
 
     @property
     def aux_heater_timeout(self) -> int:
@@ -313,7 +310,7 @@ class FeatureManager(StateManager):
             self._supported_features |= ClimateEntityFeature.SWING_MODE
 
     def apply_old_state(
-        self, old_state: State | None, hvac_mode: HVACMode | None = None, presets=[]
+        self, old_state: State | None, hvac_mode: HVACMode | None = None, presets=()
     ) -> None:
         if old_state is None:
             return

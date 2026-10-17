@@ -130,7 +130,7 @@ class TestHeatPumpConfigFlow:
 
         # Verify required fields in schema
         required_fields = []
-        for key in schema.keys():
+        for key in schema:
             if hasattr(key, "schema"):
                 field_name = key.schema
                 # Check if field is required (not Optional)
@@ -138,9 +138,9 @@ class TestHeatPumpConfigFlow:
                     required_fields.append(field_name)
 
         # Required fields should include name, sensor, heater
-        assert CONF_NAME in [k.schema for k in schema.keys() if hasattr(k, "schema")]
-        assert CONF_SENSOR in [k.schema for k in schema.keys() if hasattr(k, "schema")]
-        assert CONF_HEATER in [k.schema for k in schema.keys() if hasattr(k, "schema")]
+        assert CONF_NAME in [k.schema for k in schema if hasattr(k, "schema")]
+        assert CONF_SENSOR in [k.schema for k in schema if hasattr(k, "schema")]
+        assert CONF_HEATER in [k.schema for k in schema if hasattr(k, "schema")]
 
     async def test_advanced_settings_flattened_correctly(self, mock_hass):
         """Test that advanced settings are extracted and flattened to top level.
@@ -291,9 +291,7 @@ class TestHeatPumpFieldValidation:
         schema = result["data_schema"].schema
 
         # Verify schema exists and has advanced_settings section
-        field_names = [
-            k.schema if hasattr(k, "schema") else str(k) for k in schema.keys()
-        ]
+        field_names = [k.schema if hasattr(k, "schema") else str(k) for k in schema]
         assert "advanced_settings" in field_names
 
     async def test_field_types_match_expected_types(self, mock_hass):

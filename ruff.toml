@@ -1,0 +1,31 @@
+# ruff is pinned in requirements-dev.txt; the rule set is that version's
+# default. Bump the pin deliberately: new ruff versions change the defaults.
+target-version = "py313"
+
+[lint]
+# flake8 also runs; keep its E402 noqa comments (ruff exempts imports after
+# sys.path edits, flake8 does not, so RUF100 would strip ones flake8 needs).
+external = ["E402"]
+ignore = [
+    # File mode, not code: the Docker dev image bind-mounts a Windows checkout,
+    # where every file shows as 0777, so this fires on all files there.
+    "EXE002",
+    # The `except Exception` sites are deliberate best-effort guards (flow
+    # schema building, device service calls, test probes). Narrowing them
+    # changes behaviour and needs a per-site review, not a lint fix.
+    "BLE001",
+    # Pure style. The remaining nested ifs keep comments between the
+    # conditions or mirror neighbouring checks; ruff's fixer declines them too.
+    "SIM102",
+]
+
+[lint.per-file-ignores]
+# Class-level hvac_modes / hvac_devices are per-class defaults that instances
+# replace by assignment and never mutate in place, so ClassVar would be wrong.
+"custom_components/dual_smart_thermostat/hvac_device/*.py" = ["RUF012"]
+
+# Mirrors [isort] in setup.cfg so ruff's I001 and isort agree.
+[lint.isort]
+force-sort-within-sections = true
+combine-as-imports = true
+known-first-party = ["custom_components", "tests"]

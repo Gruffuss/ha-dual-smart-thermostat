@@ -1,6 +1,6 @@
+from collections.abc import Callable
 from datetime import timedelta
 import logging
-from typing import Callable
 
 from homeassistant.core import HomeAssistant
 

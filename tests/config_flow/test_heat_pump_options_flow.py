@@ -62,9 +62,7 @@ class TestHeatPumpOptionsFlow:
 
         # Verify name field is NOT in schema
         schema_fields = [
-            k.schema
-            for k in result["data_schema"].schema.keys()
-            if hasattr(k, "schema")
+            k.schema for k in result["data_schema"].schema if hasattr(k, "schema")
         ]
         assert CONF_NAME not in schema_fields
 
@@ -99,7 +97,7 @@ class TestHeatPumpOptionsFlow:
 
         # Verify runtime parameter defaults are pre-filled from existing config
         runtime_params = [CONF_COLD_TOLERANCE, CONF_HOT_TOLERANCE]
-        for key in schema.keys():
+        for key in schema:
             if hasattr(key, "schema"):
                 field_name = key.schema
                 if field_name in runtime_params and field_name in config_entry.data:
@@ -195,7 +193,7 @@ class TestHeatPumpOptionsFlow:
 
         # The simplified form shows runtime tuning only, not system type
         schema = result["data_schema"].schema
-        schema_field_names = [str(k) for k in schema.keys()]
+        schema_field_names = [str(k) for k in schema]
 
         # Verify system type is NOT in schema (use reconfigure flow to change it)
         assert not any(CONF_SYSTEM_TYPE in name for name in schema_field_names)

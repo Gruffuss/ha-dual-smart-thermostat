@@ -121,7 +121,7 @@ class TestFeatureAvailabilityContracts:
         # Extract actual feature toggles from schema
         actual_features = [
             key.schema
-            for key in schema.keys()
+            for key in schema
             if hasattr(key, "schema") and key.schema.startswith("configure_")
         ]
 
@@ -167,7 +167,7 @@ class TestFeatureAvailabilityContracts:
         # Extract actual feature toggles from schema
         actual_features = [
             key.schema
-            for key in schema.keys()
+            for key in schema
             if hasattr(key, "schema") and key.schema.startswith("configure_")
         ]
 
@@ -206,7 +206,7 @@ class TestFeatureAvailabilityContracts:
 
         actual_features = [
             key.schema
-            for key in schema.keys()
+            for key in schema
             if hasattr(key, "schema") and key.schema.startswith("configure_")
         ]
 
@@ -241,7 +241,7 @@ class TestFeatureAvailabilityContracts:
 
         actual_features = [
             key.schema
-            for key in schema.keys()
+            for key in schema
             if hasattr(key, "schema") and key.schema.startswith("configure_")
         ]
 
@@ -279,7 +279,7 @@ class TestFeatureAvailabilityContracts:
 
         actual_features = [
             key.schema
-            for key in schema.keys()
+            for key in schema
             if hasattr(key, "schema") and key.schema.startswith("configure_")
         ]
 
@@ -321,7 +321,7 @@ class TestFeatureAvailabilityContracts:
 
         actual_features = [
             key.schema
-            for key in schema.keys()
+            for key in schema
             if hasattr(key, "schema") and key.schema.startswith("configure_")
         ]
 
@@ -363,7 +363,7 @@ class TestFeatureAvailabilityContracts:
 
         actual_features = [
             key.schema
-            for key in schema.keys()
+            for key in schema
             if hasattr(key, "schema") and key.schema.startswith("configure_")
         ]
 

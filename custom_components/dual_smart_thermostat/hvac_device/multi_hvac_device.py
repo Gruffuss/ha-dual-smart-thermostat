@@ -1,5 +1,5 @@
+from collections.abc import Callable
 import logging
-from typing import Callable
 
 from homeassistant.components.climate import HVACAction, HVACMode
 from homeassistant.core import Context, HomeAssistant, State, callback
@@ -239,7 +239,7 @@ class MultiHvacDevice(HVACDevice, ControlableHVACDevice):
                 await device.async_control_hvac(time, force)
                 self._hvac_action_reason = device.HVACActionReason
 
-    async def async_on_startup(self, async_write_ha_state_cb: Callable = None):
+    async def async_on_startup(self, async_write_ha_state_cb: Callable | None = None):
         self._async_write_ha_state_cb = async_write_ha_state_cb
         for device in self.hvac_devices:
             await device.async_on_startup(async_write_ha_state_cb)
@@ -261,4 +261,3 @@ class MultiHvacDevice(HVACDevice, ControlableHVACDevice):
 
     async def _async_check_device_initial_state(self) -> None:
         """Child devices on_startup handles this."""
-        pass

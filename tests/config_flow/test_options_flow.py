@@ -184,7 +184,7 @@ async def test_ac_only_options_flow_progression(mock_hass, ac_only_config_entry)
 
     # Verify schema contains runtime parameters
     schema_dict = result["data_schema"].schema
-    field_names = [str(key) for key in schema_dict.keys()]
+    field_names = [str(key) for key in schema_dict]
 
     # Should have tolerances and temperature limits
     assert any("cold_tolerance" in name for name in field_names)
@@ -221,7 +221,7 @@ async def test_ac_only_features_step(mock_hass, ac_only_config_entry):
 
     # Check that schema has runtime tuning fields (not feature toggles)
     schema_dict = result["data_schema"].schema
-    field_names = [str(key) for key in schema_dict.keys()]
+    field_names = [str(key) for key in schema_dict]
 
     expected_runtime_fields = [
         "cold_tolerance",
@@ -456,7 +456,7 @@ async def test_openings_two_step_options_flow(mock_hass, ac_only_config_entry):
 
     # Ensure the schema contains per-entity timeout fields for the selected entities
     schema_dict = result["data_schema"].schema
-    field_names = [str(key) for key in schema_dict.keys()]
+    field_names = [str(key) for key in schema_dict]
     assert any("opening_1" in name for name in field_names)
     assert any("opening_2" in name for name in field_names)
     assert "openings_scope" in field_names
@@ -533,7 +533,7 @@ async def test_system_features_fields_and_floor_redirect(
 
     # Check schema has runtime tuning fields
     schema_dict = result["data_schema"].schema
-    field_names = [str(key) for key in schema_dict.keys()]
+    field_names = [str(key) for key in schema_dict]
 
     expected_runtime_fields = [
         "cold_tolerance",
@@ -623,7 +623,7 @@ async def test_floor_options_preselects_configured_sensor(
 
     # Find the Optional key that corresponds to the floor sensor and assert
     # the default includes the configured entity id.
-    sensor_key = next((k for k in schema_dict.keys() if "floor_sensor" in str(k)), None)
+    sensor_key = next((k for k in schema_dict if "floor_sensor" in str(k)), None)
     assert sensor_key is not None, "floor_sensor field missing from schema"
     # The voluptuous Optional key exposes a callable default() returning the default value
     default_value = getattr(sensor_key, "default", None)
@@ -690,7 +690,7 @@ async def test_heater_cooler_fan_settings_prefilled_in_options_flow(mock_hass):
     fan_hot_tolerance_default = None
     fan_hot_tolerance_toggle_default = None
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema"):
             field_name = key.schema
             if field_name == CONF_FAN and hasattr(key, "default"):
@@ -748,7 +748,7 @@ async def test_simple_heater_fan_settings_prefilled_in_options_flow(mock_hass):
     schema = result["data_schema"].schema
     fan_hot_tolerance_default = None
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema") and key.schema == CONF_FAN_HOT_TOLERANCE:
             if hasattr(key, "default"):
                 fan_hot_tolerance_default = (
@@ -788,7 +788,7 @@ async def test_ac_only_fan_settings_prefilled_in_options_flow(mock_hass):
     schema = result["data_schema"].schema
     defaults = {}
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema"):
             field_name = key.schema
             if hasattr(key, "default"):
@@ -834,7 +834,7 @@ async def test_heater_cooler_humidity_settings_prefilled_in_options_flow(mock_ha
     schema = result["data_schema"].schema
     defaults = {}
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema"):
             field_name = key.schema
             if hasattr(key, "default"):
@@ -872,7 +872,7 @@ async def test_simple_heater_humidity_settings_prefilled_in_options_flow(mock_ha
     schema = result["data_schema"].schema
     target_humidity_default = None
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema") and key.schema == CONF_TARGET_HUMIDITY:
             if hasattr(key, "default"):
                 target_humidity_default = (

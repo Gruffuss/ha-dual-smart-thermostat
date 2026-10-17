@@ -119,7 +119,7 @@ class TestHeaterCoolerWithFan:
 
         # Find fan_hot_tolerance field
         fan_hot_tolerance_found = False
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema") and key.schema == CONF_FAN_HOT_TOLERANCE:
                 fan_hot_tolerance_found = True
                 # Check it has default of 0.5
@@ -146,7 +146,7 @@ class TestHeaterCoolerWithFan:
 
         # Find fan_hot_tolerance_toggle field
         toggle_found = False
-        for key in schema.schema.keys():
+        for key in schema.schema:
             if hasattr(key, "schema") and key.schema == CONF_FAN_HOT_TOLERANCE_TOGGLE:
                 toggle_found = True
                 # Should be Optional, not Required
@@ -215,7 +215,7 @@ class TestHeaterCoolerWithFan:
         schema = get_fan_schema(defaults=None)
 
         # Extract field names from schema
-        field_names = [k.schema for k in schema.schema.keys() if hasattr(k, "schema")]
+        field_names = [k.schema for k in schema.schema if hasattr(k, "schema")]
 
         # Fan schema should include required fields
         assert CONF_FAN in field_names

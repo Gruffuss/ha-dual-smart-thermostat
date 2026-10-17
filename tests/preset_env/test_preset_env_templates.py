@@ -120,7 +120,6 @@ class TestTemplateDetectionAndEvaluation:
     ):
         """Test T024: Verify template.async_render() called and result converted to float."""
         # Arrange: Setup test entities and create preset with template
-        setup_template_test_entities
         template_str = "{{ states('input_number.away_temp') }}"
         preset_env = PresetEnv(**{ATTR_TEMPERATURE: template_str})
 
@@ -137,7 +136,6 @@ class TestTemplateDetectionAndEvaluation:
     ):
         """Test T025: Verify fallback to last_good_value with warning log."""
         # Arrange: Setup entities and create preset
-        setup_template_test_entities
         template_str = "{{ states('input_number.away_temp') }}"
         preset_env = PresetEnv(**{ATTR_TEMPERATURE: template_str})
 
@@ -176,7 +174,6 @@ class TestTemplateDetectionAndEvaluation:
     ):
         """Test template with Jinja2 filters (| float)."""
         # Arrange: Setup entities and create preset with filtered template
-        setup_template_test_entities
         template_str = "{{ states('input_number.eco_temp') | float }}"
         preset_env = PresetEnv(**{ATTR_TEMPERATURE: template_str})
 
@@ -192,7 +189,6 @@ class TestTemplateDetectionAndEvaluation:
     ):
         """Test range mode with both template values."""
         # Arrange: Setup entities and create range preset with templates
-        setup_template_test_entities
         preset_env = PresetEnv(
             **{
                 ATTR_TARGET_TEMP_LOW: "{{ states('sensor.outdoor_temp') | float - 2 }}",
@@ -218,7 +214,6 @@ class TestComplexConditionalTemplates:
     ):
         """Test T046: Verify if/else template logic works correctly."""
         # Arrange: Setup entities and create preset with conditional template
-        setup_template_test_entities
         template_str = "{{ 16 if is_state('sensor.season', 'winter') else 26 }}"
         preset_env = PresetEnv(**{ATTR_TEMPERATURE: template_str})
 
@@ -262,7 +257,6 @@ class TestComplexConditionalTemplates:
     ):
         """Test T049: Verify complex template with season + presence logic."""
         # Arrange: Setup entities and create complex conditional template
-        setup_template_test_entities
         template_str = """
         {{ 22 if is_state('binary_sensor.someone_home', 'on')
            else (16 if is_state('sensor.season', 'winter') else 26) }}
@@ -305,7 +299,6 @@ class TestRangeModeWithTemplates:
     ):
         """Test T054: One static value and one template work together in range mode."""
         # Arrange: Setup entities and create preset with mixed values
-        setup_template_test_entities
         preset_env = PresetEnv(
             **{
                 ATTR_TARGET_TEMP_LOW: 18.0,  # Static value

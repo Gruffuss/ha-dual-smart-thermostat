@@ -269,7 +269,7 @@ class WrappedClimateDevice(CoolerDevice):
                 context=self._context,
                 blocking=True,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             _LOGGER.error("Error setting hvac mode on %s. Error: %s", self.entity_id, e)
 
     async def _async_sync_target_temperature(self) -> None:
@@ -300,7 +300,7 @@ class WrappedClimateDevice(CoolerDevice):
                 blocking=True,
             )
             self._last_target_temp = target_temp
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             _LOGGER.error(
                 "Error setting temperature on %s. Error: %s", self.entity_id, e
             )
@@ -334,7 +334,7 @@ class WrappedClimateDevice(CoolerDevice):
                 context=self._context,
                 blocking=True,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             _LOGGER.error("Error setting fan mode on %s. Error: %s", self.entity_id, e)
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
@@ -366,7 +366,7 @@ class WrappedClimateDevice(CoolerDevice):
                 context=self._context,
                 blocking=True,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             _LOGGER.error(
                 "Error setting swing mode on %s. Error: %s", self.entity_id, e
             )
