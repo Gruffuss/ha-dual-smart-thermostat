@@ -86,6 +86,13 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
     def predictive_mode(self):
         return self._ctl.mode
 
+    @PwmHeaterDevice.hvac_mode.setter
+    def hvac_mode(self, hvac_mode):
+        """Cancel independent heating timers as soon as demand is deselected."""
+        self._hvac_mode = hvac_mode
+        if hvac_mode != HVACMode.HEAT and hasattr(self, "_pwm"):
+            self._pwm.cancel()
+
     def set_sibling_cooler(self, device):
         """Use the configured cooler for AC validity; never interlock its output."""
         self._sibling_cooler = device
@@ -149,7 +156,7 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
             now_min=(time.monotonic() - self._clock_origin) / 60,
             temp=self._celsius(temp),
             outdoor=self._celsius(self._outdoor),
-            valve_on=self.is_on,
+            valve_on=self.is_active,
             setpoint=self._celsius(
                 getattr(self.environment, self.target_env_attr, None)
             ),
@@ -193,7 +200,11 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
     async def async_on_startup(self, async_write_ha_state_cb=None):
         if self._removed:
             return
-        data = await self._store.async_load()
+        try:
+            data = await self._store.async_load()
+        except Exception as exc:
+            _LOGGER.warning("Cannot load predictive state; starting fresh: %s", exc)
+            data = None
         self._origin = self._last_tick = dt_util.utcnow()
         self._clock_origin = time.monotonic()
         if data is not None:
@@ -257,10 +268,17 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
         if not self._removed:
             self._removed = True
             self._pwm.cancel()
-            self._shutdown_task = self.hass.async_create_task(self.async_save())
+            self._shutdown_task = self.hass.async_create_task(
+                self._async_finish_remove()
+            )
+
+    async def _async_finish_remove(self):
+        """Close the valve before saving, even after PWM timers were cancelled."""
+        await self.async_turn_off()
+        await self.async_save()
 
     async def async_shutdown(self):
-        """Finish saving before an entry can reload and read the Store."""
+        """Finish closing and saving before an entry can reload the Store."""
         self.call_on_remove_callbacks()
         if self._shutdown_task:
             await self._shutdown_task

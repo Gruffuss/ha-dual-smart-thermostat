@@ -8,6 +8,7 @@ from unittest.mock import patch
 from homeassistant.components.climate import HVACMode
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store, UnsupportedStorageVersionError
 from homeassistant.setup import async_setup_component
 import homeassistant.util.dt as dt_util
 from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
@@ -16,7 +17,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
 
 from custom_components.dual_smart_thermostat.const import DOMAIN
-from tests import common, setup_sensor, setup_switch
+from tests import common, setup_sensor, setup_switch, setup_valve
 
 
 async def _setup(hass, *, extra=None, temperature=21, units=METRIC_SYSTEM):
@@ -387,15 +388,17 @@ async def test_import_predictive_state_service(hass, freezer, tmp_path, hass_sto
 async def test_entity_removed_stops_minute_tick(hass, freezer, hass_storage):
     calls = await _setup(hass, temperature=20)
     heater = _heater(hass)
+    hass.states.async_set(common.ENT_SWITCH, "on")
     await _tick(hass, freezer, 2)
     processed = heater._ctl._processed_at
+    calls.clear()
     await _climate(hass).async_remove()
     await hass.async_block_till_done()
     assert f"{DOMAIN}.predictive.test" in hass_storage
-    calls.clear()
+    assert [call.service for call in calls] == ["turn_off"]
     await _tick(hass, freezer, 61)
     assert heater._ctl._processed_at == processed
-    assert not calls
+    assert [call.service for call in calls] == ["turn_off"]
 
 
 @pytest.mark.asyncio
@@ -652,3 +655,155 @@ async def test_controller_clock_does_not_follow_wall_clock_adjustments(hass, fre
         return_value=dt_util.utcnow() - timedelta(hours=1),
     ):
         assert heater._inputs().now_min >= before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("devices", "mode"),
+    [
+        ({"fan": "switch.fan"}, HVACMode.FAN_ONLY),
+        ({"dryer": "switch.dryer"}, HVACMode.DRY),
+        ({"dryer": "switch.dryer", "cooler": "switch.cooler"}, HVACMode.DRY),
+    ],
+)
+async def test_composite_non_heating_mode_stops_predictive(
+    hass, freezer, devices, mode
+):
+    for entity_id in devices.values():
+        hass.states.async_set(entity_id, "off")
+    hass.states.async_set("sensor.humidity", "70")
+    calls = await _setup(
+        hass,
+        temperature=20,
+        extra={**devices, "humidity_sensor": "sensor.humidity", "target_humidity": 50},
+    )
+    heater = _heater(hass)
+    assert heater._pwm.running
+    hass.states.async_set(common.ENT_SWITCH, "on")
+    await hass.async_block_till_done()
+    await hass.services.async_call(
+        "climate",
+        "set_hvac_mode",
+        {"entity_id": "climate.test", "hvac_mode": mode},
+        blocking=True,
+    )
+    assert not heater._inputs().demand
+    assert not heater._pwm.running
+    hass.states.async_set(common.ENT_SWITCH, "off")
+    await hass.async_block_till_done()
+    calls.clear()
+    await _tick(hass, freezer, 61)
+    assert not [
+        call
+        for call in calls
+        if call.service == "turn_on" and call.data.get("entity_id") == common.ENT_SWITCH
+    ]
+    await hass.services.async_call(
+        "climate",
+        "set_hvac_mode",
+        {"entity_id": "climate.test", "hvac_mode": HVACMode.HEAT},
+        blocking=True,
+    )
+    assert heater._inputs().demand
+    assert heater._pwm.running
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("control_mode", ["predictive", "ai", "tpi"])
+async def test_floor_forced_on_then_off_closes_valve(hass, control_mode):
+    hass.states.async_set("sensor.floor", "18")
+    calls = await _setup(
+        hass,
+        temperature=20,
+        extra={
+            "heater_control_mode": control_mode,
+            "floor_sensor": "sensor.floor",
+            "min_floor_temp": 20,
+            "max_floor_temp": 28,
+        },
+    )
+    assert any(call.service == "turn_on" for call in calls)
+    assert not _heater(hass)._pwm.running
+    hass.states.async_set(common.ENT_SWITCH, "on")
+    await hass.async_block_till_done()
+    calls.clear()
+    await hass.services.async_call(
+        "climate",
+        "set_hvac_mode",
+        {"entity_id": "climate.test", "hvac_mode": HVACMode.OFF},
+        blocking=True,
+    )
+    assert any(call.service == "turn_off" for call in calls)
+
+
+@pytest.mark.asyncio
+async def test_cooler_selection_closes_valve_after_cancel(hass):
+    calls = await _setup(hass, temperature=20)
+    heater = _heater(hass)
+    heater._pwm.cancel()
+    hass.states.async_set(common.ENT_SWITCH, "on")
+    heater.set_cooler_selected(True)
+    await hass.async_block_till_done()
+    calls.clear()
+    await heater.async_control_hvac()
+    assert [call.service for call in calls] == ["turn_off"]
+
+
+@pytest.mark.asyncio
+async def test_pwm_planner_error_closes_valve_and_retries(hass, freezer, caplog):
+    calls = await _setup(hass, temperature=20)
+    heater = _heater(hass)
+    hass.states.async_set(common.ENT_SWITCH, "on")
+    await hass.async_block_till_done()
+    calls.clear()
+    with patch.object(
+        heater._pwm, "_compute_duty", side_effect=[RuntimeError("bad plan"), 100]
+    ) as compute:
+        await heater._pwm.async_restart()
+        assert [call.service for call in calls] == ["turn_off"]
+        assert heater._pwm.last_duty == 0
+        assert heater._pwm.running
+        assert "bad plan" in caplog.text
+        hass.states.async_set(common.ENT_SWITCH, "off")
+        await hass.async_block_till_done()
+        calls.clear()
+        await _tick(hass, freezer, 30)
+        assert compute.call_count == 2
+        assert any(call.service == "turn_on" for call in calls)
+        assert heater._pwm.last_duty == 100
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("unreadable predictive store"),
+        UnsupportedStorageVersionError("test", 99, 1),
+    ],
+    ids=["read-error", "unsupported-version"],
+)
+async def test_storage_read_error_starts_fresh_and_registers_tick(
+    hass, freezer, caplog, error
+):
+    original_load = Store.async_load
+
+    async def load(store):
+        if store.key.startswith(f"{DOMAIN}.predictive."):
+            raise error
+        return await original_load(store)
+
+    with patch.object(Store, "async_load", load):
+        await _setup(hass)
+    heater = _heater(hass)
+    await _tick(hass, freezer, 2)
+    assert heater._ctl._processed_at is not None
+    assert heater._ctl._last_inputs.valid
+    assert "Cannot load predictive state; starting fresh" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_valve_open_state_is_used_for_learning(hass, freezer):
+    setup_valve(hass, True)
+    await _setup(hass, temperature=20, extra={"heater": common.ENT_VALVE})
+    await _tick(hass, freezer)
+    assert _heater(hass)._ctl._last_inputs.valve_on

@@ -59,6 +59,7 @@ class PwmHeaterDevice(HeaterDevice):
             self._compute_duty,
             self.async_turn_on,
             self.async_turn_off,
+            lambda: self.is_active,
         )
         # Ensure PWM timers are cancelled when the entity is removed.
         self.async_on_remove(self._pwm.cancel)

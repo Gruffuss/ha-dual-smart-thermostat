@@ -40,6 +40,7 @@ class PwmHeaterController:
         compute_duty: Callable[[], float],
         turn_on_callback: Callable[[], Awaitable[None]],
         turn_off_callback: Callable[[], Awaitable[None]],
+        is_active: Callable[[], bool],
     ) -> None:
         self.hass = hass
         self.entity_id = entity_id
@@ -50,6 +51,7 @@ class PwmHeaterController:
         self._compute_duty = compute_duty
         self._turn_on = turn_on_callback
         self._turn_off = turn_off_callback
+        self._is_active = is_active
 
         self._running = False
         self._cancel_timer: Callable[[], None] | None = None
@@ -80,7 +82,7 @@ class PwmHeaterController:
 
     async def async_stop(self) -> None:
         """Stop the PWM loop and turn the switch off."""
-        if not self._running and self._cancel_timer is None:
+        if not self._running and self._cancel_timer is None and not self._is_active():
             return
         _LOGGER.debug("Stopping PWM loop for %s", self.entity_id)
         self._running = False
@@ -103,7 +105,14 @@ class PwmHeaterController:
         if not self._running:
             return
 
-        duty = max(0.0, min(100.0, float(self._compute_duty())))
+        try:
+            duty = max(0.0, min(100.0, float(self._compute_duty())))
+        except Exception:
+            _LOGGER.exception(
+                "PWM duty computation failed for %s; turning off for this cycle",
+                self.entity_id,
+            )
+            duty = 0.0
         self._last_duty = duty
         plan = plan_pwm(duty, self._cycle_seconds, self._min_segment_seconds)
 

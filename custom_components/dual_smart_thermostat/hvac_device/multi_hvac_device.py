@@ -7,6 +7,7 @@ from homeassistant.core import Context, HomeAssistant, State, callback
 from ..hvac_action_reason.hvac_action_reason import HVACActionReason
 from ..hvac_device.controllable_hvac_device import ControlableHVACDevice
 from ..hvac_device.hvac_device import HVACDevice
+from ..hvac_device.predictive_heater_device import PredictiveHeaterDevice
 from ..managers.environment_manager import EnvironmentManager
 from ..managers.feature_manager import FeatureManager
 from ..managers.opening_manager import OpeningManager
@@ -141,6 +142,13 @@ class MultiHvacDevice(HVACDevice, ControlableHVACDevice):
         for device in self.hvac_devices:
             if hvac_mode in device.hvac_modes:
                 device.hvac_mode = hvac_mode
+            elif hvac_mode not in (HVACMode.HEAT, HVACMode.HEAT_COOL):
+                # Predictive has its own timer, even when this container skips
+                # the child. Clear its demand throughout unselected subtrees.
+                if isinstance(device, PredictiveHeaterDevice):
+                    device.hvac_mode = HVACMode.OFF
+                elif isinstance(device, MultiHvacDevice):
+                    device.set_sub_devices_hvac_mode(hvac_mode)
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         _LOGGER.info(
