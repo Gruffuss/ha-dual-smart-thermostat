@@ -262,10 +262,9 @@ Pure tests port the v5 suites one to one; they use pytest functions with no hass
   - `test_predictive_without_outdoor_uses_fallback`.
 - `tests/unit/test_predictive_closed_loop.py` ports `.tests/test_closed_loop.py`, driving `PredictiveController` plus `plan_pwm` minute by minute against the same plant (`plant_step` from `.tests/test_model.py`, readings rounded to 0.1 °C):
   - `test_predictive_closed_loop_limits`: overshoot ≤ 0.3, MAE over the last 24 h ≤ 0.2, max hot run < 240;
-  - `test_predictive_tracks_better_than_pi`, only with the PI fallback;
+  - `test_predictive_tracks_better_than_pi`: predictive MAE over the last 24 h < PI's, and max overshoot ≤ 0.3 (only with the PI fallback). This replaces v5's strict "beats PI on overshoot" expected failure, as the v5 fix round did (heating session, 2026-10-17: PI never overshoots that simulated plant);
   - `test_predictive_auto_with_solar_mismatch_never_cold`: 10 days, sinusoidal outdoor, solar gain 10:00-16:00, noise σ 0.05, seed 42. Zero minutes below sp − 0.7, min T ≥ 20.3.
   - In the fork, demand comes from the hvac mode, not from v5's `switch.d` hysteresis (`test_closed_loop.py:42-46`). The solar test therefore keeps the room in HEAT mode throughout, and asserts the same limits **(mine; a deviation from the source test, logged here)**.
-  - v5's unresolved `test_predictive_beats_pi_on_overshoot` (an expected failure, results file) is carried over as `xfail(strict=True)` and stays an owner item.
 
 HA-level tests use the real `hass` fixture and freezer, following `tests/features/test_ai_heating.py`; they go in `tests/features/test_predictive_heating.py`:
 - `test_predictive_mode_creates_device`;
@@ -360,7 +359,6 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
 1. **Fallback controller:** port v4 PI (recommended, section 4) or use bang_bang.
 2. **Heat-then-cool interlock** (section 5): include `predictive_cool_interlock` or leave it out.
 3. **Pilot room** for the first cut-over.
-4. Carried from v5: the strict "predictive beats PI on overshoot" criterion stays an expected failure until you rule on it.
 
 ## Left out
 
