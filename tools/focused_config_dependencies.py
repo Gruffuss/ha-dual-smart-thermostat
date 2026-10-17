@@ -9,7 +9,225 @@ where configuration parameters only make sense when other parameters are set.
 from dataclasses import dataclass, field
 from enum import Enum
 import json
+from pathlib import Path
+import re
 from typing import Dict, List, Optional
+
+# Additional guide metadata maintained alongside the dependency graph.
+PRESENCE_PARAMETERS = {
+    "presence": {
+        "required_parameter": "away",
+        "description": (
+            "Presence sensing switches to the away preset when nobody is "
+            "present, so an away preset must be configured"
+        ),
+        "example": "away: {temperature: 16} → presence: [binary_sensor.occupancy]",
+    },
+    "presence_scope": {
+        "required_parameter": "presence",
+        "description": "Presence scope only applies when presence sensors are defined",
+        "example": "presence: [binary_sensor.occupancy] → presence_scope: [heat]",
+    },
+}
+
+HEATING_PARAMETERS = {
+    "pwm_cycle_duration": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["tpi", "ai", "predictive"],
+        "description": (
+            "PWM cycle duration only applies to proportional heater control "
+            "(tpi, ai or predictive)"
+        ),
+        "example": "heater_control_mode: tpi → pwm_cycle_duration: 1800",
+    },
+    "tpi_coef_int": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["tpi"],
+        "description": (
+            "TPI internal coefficient only applies when heater_control_mode is" " tpi"
+        ),
+        "example": "heater_control_mode: tpi → tpi_coef_int: 0.6",
+    },
+    "tpi_coef_ext": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["tpi"],
+        "description": (
+            "TPI external coefficient only applies when heater_control_mode is"
+            " tpi (and needs outside_sensor to have effect)"
+        ),
+        "example": "heater_control_mode: tpi → tpi_coef_ext: 0.01",
+    },
+    "ai_initial_heating_power": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["ai"],
+        "description": (
+            "AI initial heating power only applies when heater_control_mode is" " ai"
+        ),
+        "example": "heater_control_mode: ai → ai_initial_heating_power: 0.01",
+    },
+    "heater_control_mode": {
+        "required_parameter": "outside_sensor",
+        "when_value": "predictive",
+        "description": (
+            "Predictive heater control requires an outdoor temperature sensor"
+        ),
+        "example": "heater_control_mode: predictive -> outside_sensor: sensor.outdoor",
+    },
+    "predictive_gate": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["predictive"],
+        "description": "Predictive accuracy gate: auto, off or on (default auto)",
+        "example": "heater_control_mode: predictive -> predictive_gate: auto",
+    },
+    "predictive_mae_on": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["predictive"],
+        "description": (
+            "Predictive promotion error threshold in degrees Celsius (default " "0.3)"
+        ),
+        "example": "heater_control_mode: predictive -> predictive_mae_on: 0.3",
+    },
+    "predictive_mae_off": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["predictive"],
+        "description": (
+            "Predictive demotion error threshold in degrees Celsius (default " "0.45)"
+        ),
+        "example": "heater_control_mode: predictive -> predictive_mae_off: 0.45",
+    },
+    "predictive_min_validations": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["predictive"],
+        "description": (
+            "Independent 120-minute validations needed before promotion " "(default 48)"
+        ),
+        "example": "heater_control_mode: predictive -> predictive_min_validations: 48",
+    },
+    "predictive_kp": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["predictive"],
+        "description": "Predictive fallback PI proportional gain (default 65.0)",
+        "example": "heater_control_mode: predictive -> predictive_kp: 65.0",
+    },
+    "predictive_ki": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["predictive"],
+        "description": "Predictive fallback PI integral gain (default 0.05)",
+        "example": "heater_control_mode: predictive -> predictive_ki: 0.05",
+    },
+    "predictive_initial_k_loss": {
+        "required_parameter": "heater_control_mode",
+        "required_value": ["predictive"],
+        "description": (
+            "Predictive fallback initial heat-loss feed-forward coefficient "
+            "(default 2.0)"
+        ),
+        "example": "heater_control_mode: predictive -> predictive_initial_k_loss: 2.0",
+    },
+    "valve_maintenance_interval": {
+        "required_parameter": "valve_maintenance",
+        "required_value": [True],
+        "description": (
+            "Valve maintenance interval only applies when valve_maintenance is"
+            " enabled"
+        ),
+        "example": "valve_maintenance: true → valve_maintenance_interval: 7",
+    },
+}
+
+TEMPLATE_DEPENDENCIES = {
+    "description": (
+        "Template-based preset temperatures depend on referenced entities " "existing"
+    ),
+    "applies_to": [
+        "away_temp",
+        "away_temp_high",
+        "eco_temp",
+        "eco_temp_high",
+        "comfort_temp",
+        "comfort_temp_high",
+        "home_temp",
+        "home_temp_high",
+        "sleep_temp",
+        "sleep_temp_high",
+        "activity_temp",
+        "activity_temp_high",
+        "boost_temp",
+        "boost_temp_high",
+        "anti_freeze_temp",
+        "anti_freeze_temp_high",
+    ],
+    "dependency_type": "entity_reference",
+    "examples": {
+        "input_number_reference": {
+            "template": "{{ states('input_number.away_temp') | float }}",
+            "requires": "input_number.away_temp must exist",
+            "description": "Template references input_number helper",
+        },
+        "sensor_reference": {
+            "template": "{{ states('sensor.outdoor_temp') | float + 5 }}",
+            "requires": "sensor.outdoor_temp must exist",
+            "description": "Template references sensor with calculation",
+        },
+        "conditional_logic": {
+            "template": "{{ 16 if is_state('sensor.season', 'winter') else 26 }}",
+            "requires": "sensor.season must exist",
+            "description": "Template uses conditional logic based on entity state",
+        },
+        "multiple_entities": {
+            "template": (
+                "{{ states('input_number.base_temp') | float + "
+                "states('input_number.offset') | float }}"
+            ),
+            "requires": (
+                "Both input_number.base_temp and input_number.offset must exist"
+            ),
+            "description": "Template references multiple entities",
+        },
+    },
+    "validation": {
+        "config_flow": "Templates validated for syntax before saving",
+        "runtime": "Referenced entities checked during template evaluation",
+        "fallback": "Uses last good value if template evaluation fails",
+    },
+    "notes": [
+        "All entities referenced in template must exist",
+        "Always use | float filter to convert states to numbers",
+        "Use | float(default) to provide fallback if entity unavailable",
+        "Templates automatically re-evaluate when referenced entities change",
+        "Both static values and templates can be used for preset temperatures",
+        "Template syntax errors are caught during config flow validation",
+    ],
+}
+
+TEMPLATE_PRESET_EXAMPLE = {
+    "description": "Preset temperatures using templates for dynamic adjustment",
+    "required": ["Referenced entities (input_number, sensor, etc.) must exist"],
+    "optional": [
+        "Any preset temperature parameter can use templates",
+        "Templates can reference multiple entities",
+        "Conditional logic can be used",
+    ],
+    "example": {
+        "away_temp": "{{ states('input_number.away_target') | float }}",
+        "eco_temp": "{{ 16 if is_state('sensor.season', 'winter') else 26 }}",
+        "home_temp": "{{ states('sensor.outdoor_temp') | float + 5 }}",
+        "comfort_temp": (
+            "{{ states('input_number.base_temp') | float + "
+            "states('input_number.offset') | float }}"
+        ),
+    },
+    "notes": [
+        "Preset parameters can use static values OR templates",
+        (
+            "Both single temp mode (away_temp) and range mode (away_temp, "
+            "away_temp_high) support templates"
+        ),
+        "Template validation occurs in config flow before saving",
+        "Runtime evaluation includes fallback to last good value if template fails",
+        "See template_dependencies section for detailed requirements",
+    ],
+}
 
 
 class DependencyType(Enum):
@@ -278,6 +496,7 @@ class FocusedConfigDependencies:
         guide = {
             "conditional_parameters": {},
             "dependency_groups": {},
+            "template_dependencies": TEMPLATE_DEPENDENCIES,
             "configuration_examples": {},
         }
 
@@ -303,6 +522,15 @@ class FocusedConfigDependencies:
                     "description": dep.description,
                     "example": dep.example,
                 }
+
+        # Keep the published parameter order while including presence and PWM modes.
+        parameters = guide["conditional_parameters"]
+        guide["conditional_parameters"] = {
+            "secondary_heater_timeout": parameters.pop("secondary_heater_timeout"),
+            **PRESENCE_PARAMETERS,
+            **parameters,
+            **HEATING_PARAMETERS,
+        }
 
         # Configuration examples
         guide["configuration_examples"] = {
@@ -387,6 +615,9 @@ class FocusedConfigDependencies:
             },
         }
 
+        guide["configuration_examples"][
+            "template_based_presets"
+        ] = TEMPLATE_PRESET_EXAMPLE
         return guide
 
 
@@ -398,10 +629,19 @@ def main():
     guide = config_deps.generate_conditional_guide()
 
     # Save to JSON
-    with open(
-        "/workspaces/dual_smart_thermostat/focused_config_dependencies.json", "w"
-    ) as f:
-        json.dump(guide, f, indent=2)
+    output_path = (
+        Path(__file__).resolve().parents[1]
+        / "tools"
+        / "focused_config_dependencies.json"
+    )
+    with open(output_path, "w", encoding="utf-8", newline="\n") as f:
+        # Keep short required-value lists inline, matching the published guide.
+        output = re.sub(
+            r'"required_value": (\[[^\]]*\])',
+            lambda match: '"required_value": ' + json.dumps(json.loads(match[1])),
+            json.dumps(guide, indent=2),
+        )
+        f.write(output + "\n")
 
     # Print analysis
     print("🎯 Focused Configuration Parameter Dependencies")
