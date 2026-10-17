@@ -47,6 +47,96 @@ from custom_components.dual_smart_thermostat.const import (
 )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flow_kind", ["config", "reconfigure", "options"])
+@pytest.mark.parametrize(
+    "outdoor,cycle,min_cycle,error",
+    [
+        (None, 1800, 600, "predictive_requires_outside_sensor"),
+        ("sensor.outdoor", 1830, 600, "predictive_cycle_whole_minutes"),
+        ("sensor.outdoor", 1800, 601, "predictive_cycle_too_short"),
+        ("sensor.outdoor", 1800, {"minutes": 11}, "predictive_cycle_too_short"),
+        (
+            "sensor.outdoor",
+            1800,
+            {"days": 0, "seconds": 601, "microseconds": 0},
+            "predictive_cycle_too_short",
+        ),
+    ],
+)
+async def test_predictive_validation(hass, flow_kind, outdoor, cycle, min_cycle, error):
+    """All flow entry points reject invalid predictive dependencies and timing."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.dual_smart_thermostat.options_flow import OptionsFlowHandler
+
+    base = {
+        "name": "Predictive",
+        "system_type": "heater_cooler",
+        "heater": "switch.heater",
+        "target_sensor": "sensor.room",
+        "cooler": "switch.cooler",
+    }
+    advanced = {
+        "heater_control_mode": "predictive",
+        "pwm_cycle_duration": cycle,
+        "min_cycle_duration": min_cycle,
+    }
+    if outdoor:
+        advanced["outside_sensor"] = outdoor
+    entry = MockConfigEntry(domain=DOMAIN, data=base)
+    entry.add_to_hass(hass)
+    if flow_kind == "options":
+        flow = OptionsFlowHandler(entry)
+        flow.hass = hass
+        result = await flow.async_step_init({"advanced_settings": advanced})
+        expected_step = "init"
+    else:
+        flow = ConfigFlowHandler()
+        flow.hass = hass
+        if flow_kind == "reconfigure":
+            flow.context = {"source": "reconfigure", "entry_id": entry.entry_id}
+            await flow.async_step_reconfigure()
+            await flow.async_step_reconfigure_confirm({"system_type": "heater_cooler"})
+        else:
+            await flow.async_step_user({"system_type": "heater_cooler"})
+        result = await flow.async_step_heater_cooler(
+            {**base, "advanced_settings": advanced}
+        )
+        expected_step = "heater_cooler"
+    assert result["type"] == "form"
+    assert result["step_id"] == expected_step
+    assert result["errors"] == {"base": error}
+    # Correct the same form without losing the selected mode or submitted values.
+    advanced_schema = next(
+        value.schema
+        for key, value in result["data_schema"].schema.items()
+        if key.schema == "advanced_settings"
+    )
+    assert (
+        next(
+            key.default()
+            for key in advanced_schema.schema
+            if key.schema == "heater_control_mode"
+        )
+        == "predictive"
+    )
+    corrected = {
+        **advanced,
+        "outside_sensor": "sensor.outdoor",
+        "pwm_cycle_duration": 1800,
+        "min_cycle_duration": {"minutes": 10},
+    }
+    if flow_kind == "options":
+        result = await flow.async_step_init({"advanced_settings": corrected})
+        assert result["type"] == "create_entry"
+    else:
+        result = await flow.async_step_heater_cooler(
+            {**base, "advanced_settings": corrected}
+        )
+        assert result["step_id"] == "features"
+
+
 @pytest.fixture
 def mock_hass():
     """Create a mock Home Assistant instance."""

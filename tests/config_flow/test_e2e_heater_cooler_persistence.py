@@ -30,6 +30,7 @@ Note: Similar E2E tests should exist for all system types:
 from homeassistant.const import CONF_NAME
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+import voluptuous as vol
 
 from custom_components.dual_smart_thermostat.const import (
     CONF_COLD_TOLERANCE,
@@ -51,6 +52,90 @@ from custom_components.dual_smart_thermostat.const import (
     DOMAIN,
     SYSTEM_TYPE_HEATER_COOLER,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gate", ["auto", "off", "on"])
+async def test_predictive_config_options_persistence(hass, gate):
+    """Real selectors preserve every predictive setting through config and options."""
+    from custom_components.dual_smart_thermostat.config_flow import ConfigFlowHandler
+    from custom_components.dual_smart_thermostat.options_flow import OptionsFlowHandler
+
+    settings = {
+        "heater_control_mode": "predictive",
+        "outside_sensor": "sensor.outdoor",
+        "pwm_cycle_duration": 1800,
+        "min_cycle_duration": {"minutes": 10},
+        "predictive_gate": gate,
+        "predictive_mae_on": 0.25,
+        "predictive_mae_off": 0.5,
+        "predictive_min_validations": 60,
+        "predictive_kp": 45.0,
+        "predictive_ki": 0.1,
+        "predictive_initial_k_loss": 3.0,
+    }
+    flow = ConfigFlowHandler()
+    flow.hass = hass
+    form = await flow.async_step_user({"system_type": "heater_cooler"})
+    validated = form["data_schema"](
+        {
+            "name": "Predictive",
+            "heater": "switch.heater",
+            "target_sensor": "sensor.room",
+            "cooler": "switch.cooler",
+            "advanced_settings": settings,
+        }
+    )
+    await flow.async_step_heater_cooler(validated)
+    result = await flow.async_step_features({})
+    assert result["type"] == "create_entry"
+    for key, value in settings.items():
+        assert result["data"][key] == value
+    entry = MockConfigEntry(domain=DOMAIN, data=result["data"])
+    entry.add_to_hass(hass)
+    options = OptionsFlowHandler(entry)
+    options.hass = hass
+    form = await options.async_step_init()
+    advanced = next(
+        value.schema
+        for key, value in form["data_schema"].schema.items()
+        if key.schema == "advanced_settings"
+    )
+    defaults = {
+        key.schema: key.default()
+        for key in advanced.schema
+        if key.default is not vol.UNDEFINED
+    }
+    for key, value in settings.items():
+        if key != "min_cycle_duration":
+            assert defaults[key] == value
+    changed = {
+        key: value for key, value in settings.items() if key != "min_cycle_duration"
+    }
+    changed["predictive_kp"] = 50.0
+    changed["predictive_gate"] = "off" if gate != "off" else "auto"
+    submitted = form["data_schema"]({"advanced_settings": changed})
+    result = await options.async_step_init(submitted)
+    assert result["type"] == "create_entry"
+    for key, value in changed.items():
+        assert result["data"][key] == value
+    assert entry.data["predictive_kp"] == 50.0
+    hass.config_entries.async_update_entry(entry, options=result["data"])
+    reopened = OptionsFlowHandler(entry)
+    reopened.hass = hass
+    form = await reopened.async_step_init()
+    advanced = next(
+        value.schema
+        for key, value in form["data_schema"].schema.items()
+        if key.schema == "advanced_settings"
+    )
+    defaults = {
+        key.schema: key.default()
+        for key in advanced.schema
+        if key.default is not vol.UNDEFINED
+    }
+    for key, value in changed.items():
+        assert defaults[key] == value
 
 
 @pytest.mark.asyncio

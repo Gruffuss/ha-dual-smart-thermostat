@@ -60,6 +60,7 @@ from .feature_steps import (
     PresetsSteps,
 )
 from .schema_utils import get_tolerance_selector
+from .schemas import get_heating_control_fields, validate_heating_control_config
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -380,6 +381,8 @@ class OptionsFlowHandler(OptionsFlow):
         # Initial HVAC mode
         system_type = current_config.get(CONF_SYSTEM_TYPE, SYSTEM_TYPE_SIMPLE_HEATER)
         hvac_mode_options = []
+        if system_type in (SYSTEM_TYPE_SIMPLE_HEATER, SYSTEM_TYPE_HEATER_COOLER):
+            advanced_dict.update(get_heating_control_fields(current_config))
         if system_type != SYSTEM_TYPE_AC_ONLY:
             hvac_mode_options.extend(["heat", "heat_cool"])
         hvac_mode_options.extend(["cool", "off", "fan_only", "dry"])
@@ -522,6 +525,18 @@ class OptionsFlowHandler(OptionsFlow):
                 advanced_settings = user_input.pop("advanced_settings")
                 if advanced_settings:
                     user_input.update(advanced_settings)
+
+            proposed_config = {**current_config, **user_input}
+            errors = validate_heating_control_config(proposed_config)
+            if errors:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self._build_options_schema(proposed_config),
+                    errors=errors,
+                    description_placeholders={
+                        "name": current_config.get("name", "Dual Smart Thermostat")
+                    },
+                )
 
             # Copy current_config but exclude transient flow state flags
             excluded_flags = self._get_excluded_flags()

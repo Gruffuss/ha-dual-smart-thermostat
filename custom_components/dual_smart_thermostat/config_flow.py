@@ -55,6 +55,7 @@ from .schemas import (
     get_preset_selection_schema,
     get_simple_heater_schema,
     get_system_type_schema,
+    validate_heating_control_config,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -312,9 +313,12 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
                 if advanced_settings:
                     user_input.update(advanced_settings)
 
+            errors = validate_heating_control_config(
+                {**self.collected_config, **user_input}
+            )
             if not await self._validate_basic_config(user_input):
                 errors = EntityValidator.get_validation_errors(user_input)
-            else:
+            elif not errors:
                 # For AC-only systems, force AC mode to true
                 if system_type == SystemType.AC_ONLY:
                     user_input[CONF_AC_MODE] = True
@@ -330,7 +334,9 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         # Pass collected_config as defaults to prepopulate form with current values
         if system_type == SystemType.SIMPLE_HEATER:
             schema = get_simple_heater_schema(
-                hass=self.hass, defaults=self.collected_config, include_name=True
+                hass=self.hass,
+                defaults={**self.collected_config, **(user_input or {})},
+                include_name=True,
             )
         else:
             schema = __import__(
@@ -429,6 +435,9 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
                 if advanced_settings:
                     user_input.update(advanced_settings)
 
+            errors = validate_heating_control_config(
+                {**self.collected_config, **user_input}
+            )
             if not await self._validate_basic_config(user_input):
                 heater = user_input.get(CONF_HEATER)
                 sensor = user_input.get(CONF_SENSOR)
@@ -438,14 +447,16 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
                     errors["base"] = "same_heater_sensor"
                 elif heater and cooler and heater == cooler:
                     errors["base"] = "same_heater_cooler"
-            else:
+            elif not errors:
                 self.collected_config.update(user_input)
                 return await self._determine_next_step()
 
         # Use dedicated heater+cooler schema with advanced settings in collapsible section
         # Pass collected_config as defaults to prepopulate form with current values
         schema = get_heater_cooler_schema(
-            hass=self.hass, defaults=self.collected_config, include_name=True
+            hass=self.hass,
+            defaults={**self.collected_config, **(user_input or {})},
+            include_name=True,
         )
 
         return self.async_show_form(

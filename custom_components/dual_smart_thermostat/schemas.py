@@ -15,6 +15,7 @@ from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import section
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import selector
 import voluptuous as vol
 
@@ -74,7 +75,6 @@ from .const import (
     CONF_TPI_COEF_INT,
     CONF_VALVE_MAINTENANCE,
     CONF_VALVE_MAINTENANCE_INTERVAL,
-    DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_PREDICTIVE_GATE,
     DEFAULT_PREDICTIVE_INITIAL_K_LOSS,
     DEFAULT_PREDICTIVE_KI,
@@ -82,6 +82,7 @@ from .const import (
     DEFAULT_PREDICTIVE_MAE_OFF,
     DEFAULT_PREDICTIVE_MAE_ON,
     DEFAULT_PREDICTIVE_MIN_VALIDATIONS,
+    DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
     DEFAULT_VALVE_MAINTENANCE_INTERVAL,
     SYSTEM_TYPES,
@@ -335,12 +336,45 @@ def get_timing_fields_for_section(
     return schema_dict
 
 
+def validate_heating_control_config(config: dict[str, Any]) -> dict[str, str]:
+    """Validate predictive dependencies after a flow has flattened its sections."""
+    if config.get(CONF_HEATER_CONTROL_MODE) != HeaterControlMode.PREDICTIVE:
+        return {}
+    if not config.get(CONF_OUTSIDE_SENSOR):
+        return {"base": "predictive_requires_outside_sensor"}
+
+    try:
+        cycle = cv.time_period(
+            config.get(CONF_PWM_CYCLE_DURATION, DEFAULT_PWM_CYCLE_DURATION)
+        ).total_seconds()
+        minimum_value = config.get(CONF_MIN_DUR, 0)
+        minimum = (
+            timedelta(**minimum_value)
+            if isinstance(minimum_value, dict)
+            else cv.time_period(minimum_value)
+        ).total_seconds()
+    except (vol.Invalid, ValueError, TypeError, OverflowError):
+        return {"base": "predictive_cycle_whole_minutes"}
+    if cycle <= 0 or cycle % 60:
+        return {"base": "predictive_cycle_whole_minutes"}
+    if minimum < 0 or 3 * minimum > cycle:
+        return {"base": "predictive_cycle_too_short"}
+    return {}
+
+
 def get_heating_control_fields(
     defaults: dict[str, Any] | None = None,
 ) -> dict[Any, Any]:
     """Heater modes and their tuning fields for config and options forms."""
     defaults = defaults or {}
     fields: dict[Any, Any] = {}
+
+    fields[
+        vol.Optional(
+            CONF_OUTSIDE_SENSOR,
+            default=defaults.get(CONF_OUTSIDE_SENSOR) or vol.UNDEFINED,
+        )
+    ] = get_entity_selector(SENSOR_DOMAIN)
 
     fields[
         vol.Optional(
