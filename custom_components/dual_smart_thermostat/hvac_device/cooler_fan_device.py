@@ -82,7 +82,9 @@ class CoolerFanDevice(MultiHvacDevice):
         self._hvac_mode = hvac_mode
         self.set_sub_devices_hvac_mode(hvac_mode)
 
-    async def async_on_startup(self, async_write_ha_state_cb: Callable = None) -> None:
+    async def async_on_startup(
+        self, async_write_ha_state_cb: Callable | None = None
+    ) -> None:
         await super().async_on_startup(async_write_ha_state_cb)
 
         # Only track state changes if it's an entity_id (string), not a boolean

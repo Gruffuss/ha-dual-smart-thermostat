@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import inspect
+import logging
 from typing import Any
 from unittest.mock import AsyncMock
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def build_schema_context_from_flow(
@@ -36,15 +40,13 @@ def build_schema_context_from_flow(
     if states is not None:
         maybe_values = _states_snapshot_values(states)
         if maybe_values is not None:
-            try:
+            # If snapshot fails, skip it (factories handle missing hass).
+            with contextlib.suppress(Exception):
                 # Build a simple mapping of entity_id -> state object. Use
                 # getattr for entity_id in case test mocks omit it.
                 ctx["hass"] = {
                     "states": {getattr(s, "entity_id", None): s for s in maybe_values}
                 }
-            except Exception:
-                # If snapshot fails, skip it (factories handle missing hass).
-                pass
 
     return ctx
 
@@ -75,6 +77,7 @@ def _states_snapshot_values(states) -> list | None:
                 continue
             result_list = list(result)
         except Exception:
+            _LOGGER.debug("states.%s() failed", accessor_name, exc_info=True)
             continue
         if result_list:
             return result_list

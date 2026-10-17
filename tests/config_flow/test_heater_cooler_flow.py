@@ -132,7 +132,7 @@ class TestHeaterCoolerConfigFlow:
 
         # Verify required fields in schema
         required_fields = []
-        for key in schema.keys():
+        for key in schema:
             if hasattr(key, "schema"):
                 field_name = key.schema
                 # Check if field is required (not Optional)
@@ -140,10 +140,10 @@ class TestHeaterCoolerConfigFlow:
                     required_fields.append(field_name)
 
         # Required fields should include name, sensor, heater, cooler
-        assert CONF_NAME in [k for k in schema.keys() if hasattr(k, "schema")]
-        assert CONF_SENSOR in [k.schema for k in schema.keys() if hasattr(k, "schema")]
-        assert CONF_HEATER in [k.schema for k in schema.keys() if hasattr(k, "schema")]
-        assert CONF_COOLER in [k.schema for k in schema.keys() if hasattr(k, "schema")]
+        assert CONF_NAME in [k for k in schema if hasattr(k, "schema")]
+        assert CONF_SENSOR in [k.schema for k in schema if hasattr(k, "schema")]
+        assert CONF_HEATER in [k.schema for k in schema if hasattr(k, "schema")]
+        assert CONF_COOLER in [k.schema for k in schema if hasattr(k, "schema")]
 
     async def test_advanced_settings_flattened_correctly(self, mock_hass):
         """Test that advanced settings are extracted and flattened to top level.
@@ -253,9 +253,7 @@ class TestHeaterCoolerOptionsFlow:
 
         # Verify name field is NOT in schema
         schema_fields = [
-            k.schema
-            for k in result["data_schema"].schema.keys()
-            if hasattr(k, "schema")
+            k.schema for k in result["data_schema"].schema if hasattr(k, "schema")
         ]
         assert CONF_NAME not in schema_fields
 
@@ -291,7 +289,7 @@ class TestHeaterCoolerOptionsFlow:
 
         # Verify runtime parameter defaults are pre-filled from existing config
         runtime_params = [CONF_COLD_TOLERANCE, CONF_HOT_TOLERANCE]
-        for key in schema.keys():
+        for key in schema:
             if hasattr(key, "schema"):
                 field_name = key.schema
                 if field_name in runtime_params and field_name in config_entry.data:
@@ -384,7 +382,7 @@ class TestHeaterCoolerOptionsFlow:
 
         # The simplified form shows runtime tuning only, not system type
         schema = result["data_schema"].schema
-        schema_field_names = [str(k) for k in schema.keys()]
+        schema_field_names = [str(k) for k in schema]
 
         # Verify system type is NOT in schema (use reconfigure flow to change it)
         assert not any(CONF_SYSTEM_TYPE in name for name in schema_field_names)

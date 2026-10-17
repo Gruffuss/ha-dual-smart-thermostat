@@ -362,12 +362,9 @@ class PresetManager(StateManager):
         if not self._check_humidity_match(preset_env, current_humidity):
             return False
 
-        if not self._check_floor_temp_limits_match(
+        return self._check_floor_temp_limits_match(
             preset_env, current_min_floor_temp, current_max_floor_temp
-        ):
-            return False
-
-        return True
+        )
 
     def _check_temperature_match(self, preset_env, current_temp: float | None) -> bool:
         """Check if single temperature matches preset.

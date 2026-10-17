@@ -60,7 +60,7 @@ async def test_apply_sets_fan_mode_and_turns_on_switches():
     fan_device.current_fan_mode = "low"
     fan_device.async_set_fan_mode = AsyncMock()
 
-    hass, features, mgr = _make_manager(
+    hass, _features, mgr = _make_manager(
         fan_device=fan_device,
         supports_fan_mode=True,
         states={"switch.sleep": _state("off")},
@@ -226,7 +226,7 @@ async def test_restore_turns_switch_back_on_when_prior_was_on():
 
 @pytest.mark.asyncio
 async def test_restore_baseline_roundtrip_clears_baseline():
-    hass, _, mgr = _make_manager(states={"switch.sleep": _state("on")})
+    _hass, _, mgr = _make_manager(states={"switch.sleep": _state("on")})
     mgr.restore_baseline({"fan_mode": None, "switches": {"switch.sleep": "off"}})
     await mgr.async_restore()
     assert mgr.serialize_baseline() is None

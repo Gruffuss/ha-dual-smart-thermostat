@@ -288,10 +288,9 @@ class OpeningsSteps:
             # first step and show the detailed options form next.
             if user_input.get("selected_openings") and not any(
                 k
-                for k in user_input.keys()
+                for k in user_input
                 if k == CONF_OPENINGS_SCOPE
-                or k.endswith("_timeout_open")
-                or k.endswith("_timeout_close")
+                or k.endswith(("_timeout_open", "_timeout_close"))
             ):
                 # Store the selection and render the detailed options step
                 collected_config["selected_openings"] = user_input["selected_openings"]

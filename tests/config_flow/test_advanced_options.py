@@ -90,7 +90,7 @@ def test_user_workflow():
 
     # Step 2: User sees clean interface
     print("2. 👤 User sees clean AC features form:")
-    for key in schema_step1.schema.keys():
+    for key in schema_step1.schema:
         if hasattr(key, "schema"):
             field_name = key.schema
             if field_name.startswith("configure_"):

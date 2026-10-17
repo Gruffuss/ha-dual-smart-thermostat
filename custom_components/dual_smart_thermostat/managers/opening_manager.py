@@ -191,16 +191,17 @@ class OpeningManager:
             opening[timeout_attr],
             STATE_OPEN if check_open else STATE_CLOSED,
         )
-        if condition.state(
-            self.hass,
-            opening_entity,
-            STATE_OPEN if check_open else STATE_CLOSED,
-            opening[timeout_attr],
-        ) or condition.state(
-            self.hass,
-            opening_entity,
-            STATE_ON if check_open else STATE_OFF,
-            opening[timeout_attr],
-        ):
-            return True
-        return False
+        return bool(
+            condition.state(
+                self.hass,
+                opening_entity,
+                STATE_OPEN if check_open else STATE_CLOSED,
+                opening[timeout_attr],
+            )
+            or condition.state(
+                self.hass,
+                opening_entity,
+                STATE_ON if check_open else STATE_OFF,
+                opening[timeout_attr],
+            )
+        )

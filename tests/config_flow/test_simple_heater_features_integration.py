@@ -272,7 +272,7 @@ class TestSimpleHeaterFloorHeatingOnly:
         result = await flow.async_step_floor_config()
         schema = result["data_schema"].schema
 
-        field_names = [key.schema for key in schema.keys() if hasattr(key, "schema")]
+        field_names = [key.schema for key in schema if hasattr(key, "schema")]
 
         assert CONF_FLOOR_SENSOR in field_names
         assert CONF_MIN_FLOOR_TEMP in field_names
@@ -526,7 +526,7 @@ class TestSimpleHeaterBlockedFeatures:
         result = await flow.async_step_features()
         schema = result["data_schema"].schema
 
-        field_names = [key.schema for key in schema.keys() if hasattr(key, "schema")]
+        field_names = [key.schema for key in schema if hasattr(key, "schema")]
 
         # Fan should NOT be in the schema
         assert "configure_fan" not in field_names
@@ -545,7 +545,7 @@ class TestSimpleHeaterBlockedFeatures:
         result = await flow.async_step_features()
         schema = result["data_schema"].schema
 
-        field_names = [key.schema for key in schema.keys() if hasattr(key, "schema")]
+        field_names = [key.schema for key in schema if hasattr(key, "schema")]
 
         # Humidity should NOT be in the schema
         assert "configure_humidity" not in field_names
@@ -564,7 +564,7 @@ class TestSimpleHeaterBlockedFeatures:
         result = await flow.async_step_features()
         schema = result["data_schema"].schema
 
-        field_names = [key.schema for key in schema.keys() if hasattr(key, "schema")]
+        field_names = [key.schema for key in schema if hasattr(key, "schema")]
 
         # Only available features should be present
         expected_features = [

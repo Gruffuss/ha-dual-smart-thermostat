@@ -851,7 +851,7 @@ async def test_heater_cooler_fan_mode_default_is_false_when_not_set(hass):
     schema = result["data_schema"].schema
     fan_mode_default = None
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema") and key.schema == CONF_FAN_MODE:
             if hasattr(key, "default"):
                 fan_mode_default = (
@@ -900,7 +900,7 @@ async def test_heater_cooler_fan_mode_true_shown_as_default_in_options_flow(hass
     schema = result["data_schema"].schema
     fan_mode_default = None
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema") and key.schema == CONF_FAN_MODE:
             if hasattr(key, "default"):
                 fan_mode_default = (
@@ -1099,7 +1099,7 @@ async def test_heater_cooler_fan_on_with_ac_false_shown_in_options_flow(hass):
     schema = result["data_schema"].schema
     fan_on_with_ac_default = None
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema") and key.schema == CONF_FAN_ON_WITH_AC:
             if hasattr(key, "default"):
                 fan_on_with_ac_default = (
@@ -1147,7 +1147,7 @@ async def test_heater_cooler_fan_on_with_ac_false_not_in_config_shows_true_defau
     schema = result["data_schema"].schema
     fan_on_with_ac_default = None
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema") and key.schema == CONF_FAN_ON_WITH_AC:
             if hasattr(key, "default"):
                 fan_on_with_ac_default = (
@@ -1216,7 +1216,7 @@ async def test_heater_cooler_fan_mode_true_persists_and_shows_in_options(hass):
     schema = result["data_schema"].schema
     fan_mode_default = None
 
-    for key in schema.keys():
+    for key in schema:
         if hasattr(key, "schema") and key.schema == CONF_FAN_MODE:
             if hasattr(key, "default"):
                 fan_mode_default = (
@@ -1300,7 +1300,7 @@ class TestHeaterCoolerModeSpecificTolerancesPersistence:
 
         # Find advanced_settings section
         advanced_key = next(
-            (key for key in init_schema.keys() if "advanced_settings" in str(key)),
+            (key for key in init_schema if "advanced_settings" in str(key)),
             None,
         )
         assert advanced_key is not None, "advanced_settings section not found in schema"
@@ -1369,7 +1369,7 @@ class TestHeaterCoolerModeSpecificTolerancesPersistence:
         # Step 10: Verify mode-specific tolerances still pre-filled with updated values
         init_schema2 = result2["data_schema"].schema
         advanced_key2 = next(
-            (key for key in init_schema2.keys() if "advanced_settings" in str(key)),
+            (key for key in init_schema2 if "advanced_settings" in str(key)),
             None,
         )
         advanced_schema2 = init_schema2[advanced_key2]

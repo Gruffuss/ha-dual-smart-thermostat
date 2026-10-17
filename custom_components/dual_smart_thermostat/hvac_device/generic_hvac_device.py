@@ -242,7 +242,7 @@ class GenericHVACDevice(
             self.strategy, self.target_env_attr, self.hvac_action
         )
 
-    async def async_on_startup(self, async_write_ha_state_cb: Callable = None):
+    async def async_on_startup(self, async_write_ha_state_cb: Callable | None = None):
 
         self._async_write_ha_state_cb = async_write_ha_state_cb
         entity_state = self.hass.states.get(self.entity_id)

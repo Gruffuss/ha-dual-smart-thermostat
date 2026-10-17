@@ -33,7 +33,7 @@ def test_basic_schema():
     schema_dict = schema.schema
     present_fields = []
 
-    for key in schema_dict.keys():
+    for key in schema_dict:
         if hasattr(key, "schema") and key.schema in basic_fields:
             present_fields.append(key.schema)
 
@@ -88,7 +88,7 @@ def test_advanced_schema():
     # Count configuration fields
     config_count = 0
 
-    for key in schema_dict.keys():
+    for key in schema_dict:
         if hasattr(key, "schema"):
             field_name = key.schema
             if field_name in config_fields:

@@ -58,20 +58,22 @@ class TestConfigFlowValidation:
             "system_type": "simple_heater",
         }
 
-        with patch(
-            "custom_components.dual_smart_thermostat.config_flow.validate_config_with_models"
-        ) as mock_validate:
-            with patch(
+        with (
+            patch(
+                "custom_components.dual_smart_thermostat.config_flow.validate_config_with_models"
+            ) as mock_validate,
+            patch(
                 "custom_components.dual_smart_thermostat.config_flow._LOGGER"
-            ) as mock_logger:
-                mock_validate.return_value = False
+            ) as mock_logger,
+        ):
+            mock_validate.return_value = False
 
-                # Simulate finishing preset selection without presets
-                await flow.async_step_preset_selection(user_input={})
+            # Simulate finishing preset selection without presets
+            await flow.async_step_preset_selection(user_input={})
 
-                # Validation should have failed and logged warning
-                mock_validate.assert_called_once()
-                mock_logger.warning.assert_called_once()
+            # Validation should have failed and logged warning
+            mock_validate.assert_called_once()
+            mock_logger.warning.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_config_flow_import_validates_config(self, mock_hass):

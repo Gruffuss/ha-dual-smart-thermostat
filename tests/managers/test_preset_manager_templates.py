@@ -25,7 +25,6 @@ class TestPresetManagerTemplateIntegration:
     ):
         """Test T027: Verify PresetManager uses getters."""
         # Arrange: Setup entities and create preset with template
-        setup_template_test_entities
         template_str = "{{ states('input_number.away_temp') }}"
         preset_env = PresetEnv(**{ATTR_TEMPERATURE: template_str})
 
@@ -59,7 +58,6 @@ class TestPresetManagerTemplateIntegration:
     ):
         """Test T028: Verify environment.target_temp updated with template result."""
         # Arrange: Setup entities
-        setup_template_test_entities
 
         # Change entity value to verify template evaluation
         hass.states.async_set(
@@ -99,7 +97,6 @@ class TestPresetManagerTemplateIntegration:
     ):
         """Test PresetManager handles range mode templates."""
         # Arrange: Setup entities
-        setup_template_test_entities
 
         preset_env = PresetEnv(
             target_temp_low="{{ states('sensor.outdoor_temp') | float - 2 }}",

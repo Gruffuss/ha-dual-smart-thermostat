@@ -45,7 +45,7 @@ async def test_config_flow_system_type_selection():
     # Check that system type options are available
     schema_dict = result["data_schema"].schema
     system_type_field = None
-    for key in schema_dict.keys():
+    for key in schema_dict:
         if hasattr(key, "schema") and key.schema == CONF_SYSTEM_TYPE:
             system_type_field = key
             break
@@ -264,7 +264,7 @@ async def test_heater_cooler_schema_includes_name():
     # Verify name field is in the schema
     schema_dict = result["data_schema"].schema
     name_field_found = False
-    for key in schema_dict.keys():
+    for key in schema_dict:
         if hasattr(key, "schema") and key.schema == CONF_NAME:
             name_field_found = True
             # Verify it's required

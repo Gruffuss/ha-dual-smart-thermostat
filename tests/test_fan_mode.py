@@ -273,9 +273,7 @@ async def test_get_hvac_modes_cool_fan_configured(
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(common.ENTITY)
     modes = state.attributes.get("hvac_modes")
-    assert set(modes) == set(
-        [HVACMode.COOL, HVACMode.OFF, HVACMode.FAN_ONLY, HVACMode.AUTO]
-    )
+    assert set(modes) == {HVACMode.COOL, HVACMode.OFF, HVACMode.FAN_ONLY, HVACMode.AUTO}
 
 
 async def test_get_hvac_modes_fan_only_configured(
@@ -284,7 +282,7 @@ async def test_get_hvac_modes_fan_only_configured(
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(common.ENTITY)
     modes = state.attributes.get("hvac_modes")
-    assert set(modes) == set([HVACMode.OFF, HVACMode.FAN_ONLY])
+    assert set(modes) == {HVACMode.OFF, HVACMode.FAN_ONLY}
 
 
 @pytest.mark.parametrize(
@@ -591,7 +589,7 @@ async def test_turn_away_mode_on_fan(
     setup_sensor(hass, 25)
     await hass.async_block_till_done()
     state = hass.states.get(common.ENTITY)
-    assert set(state.attributes.get("preset_modes")) == set([PRESET_NONE, PRESET_AWAY])
+    assert set(state.attributes.get("preset_modes")) == {PRESET_NONE, PRESET_AWAY}
     await common.async_set_temperature(hass, 19)
     await common.async_set_preset_mode(hass, PRESET_AWAY)
     state = hass.states.get(common.ENTITY)
@@ -606,7 +604,7 @@ async def test_turn_away_mode_on_cooling(
     setup_sensor(hass, 25)
     await hass.async_block_till_done()
     state = hass.states.get(common.ENTITY)
-    assert set(state.attributes.get("preset_modes")) == set([PRESET_NONE, PRESET_AWAY])
+    assert set(state.attributes.get("preset_modes")) == {PRESET_NONE, PRESET_AWAY}
     await common.async_set_temperature(hass, 19)
     await common.async_set_preset_mode(hass, PRESET_AWAY)
     state = hass.states.get(common.ENTITY)

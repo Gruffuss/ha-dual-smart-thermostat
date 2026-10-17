@@ -208,7 +208,7 @@ async def test_save_noop_when_value_unchanged_does_not_persist():
 
 
 async def test_save_disabled_is_noop():
-    manager, hass, presets_manager, _ = _make_manager(enabled=False)
+    manager, hass, _presets_manager, _ = _make_manager(enabled=False)
 
     assert await manager.async_save_temperatures() is False
     hass.config_entries.async_update_entry.assert_not_called()

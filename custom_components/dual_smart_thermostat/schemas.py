@@ -1079,7 +1079,7 @@ def get_core_schema(
 
 
 def get_openings_selection_schema(
-    collected_config: dict[str, Any] = None, defaults: list[str] = None
+    collected_config: dict[str, Any] | None = None, defaults: list[str] | None = None
 ):
     """Get schema for selecting opening entities."""
     # log the defaults
@@ -1099,7 +1099,7 @@ def get_openings_selection_schema(
 
 
 def get_presence_selection_schema(
-    collected_config: dict[str, Any] = None, defaults: list[str] = None
+    collected_config: dict[str, Any] | None = None, defaults: list[str] | None = None
 ):
     """Get schema for selecting presence sensor entities."""
     _LOGGER.debug("Presence selection defaults: %s", defaults)

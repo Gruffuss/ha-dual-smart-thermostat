@@ -213,7 +213,7 @@ async def test_get_hvac_modes(hass: HomeAssistant, setup_comp_heat_ac_cool_dry) 
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(common.ENTITY)
     modes = state.attributes.get("hvac_modes")
-    assert set(modes) == set([HVACMode.COOL, HVACMode.DRY, HVACMode.OFF, HVACMode.AUTO])
+    assert set(modes) == {HVACMode.COOL, HVACMode.DRY, HVACMode.OFF, HVACMode.AUTO}
 
 
 @pytest.fixture
@@ -448,7 +448,7 @@ async def test_turn_away_mode_on_drying(
     setup_humidity_sensor(hass, 40)
     await hass.async_block_till_done()
     state = hass.states.get(common.ENTITY)
-    assert set(state.attributes.get("preset_modes")) == set([PRESET_NONE, PRESET_AWAY])
+    assert set(state.attributes.get("preset_modes")) == {PRESET_NONE, PRESET_AWAY}
     await common.async_set_temperature(hass, 19)
     await common.async_set_humidity(hass, 60)
     await common.async_set_preset_mode(hass, PRESET_AWAY)

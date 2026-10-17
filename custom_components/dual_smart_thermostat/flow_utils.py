@@ -38,10 +38,7 @@ class EntityValidator:
 
         # Validate that heater and cooler are different if both specified
         cooler = user_input.get(CONF_COOLER)
-        if heater and cooler and heater == cooler:
-            return False
-
-        return True
+        return not (heater and cooler and heater == cooler)
 
     @staticmethod
     def get_validation_errors(user_input: dict[str, Any]) -> dict[str, str]:

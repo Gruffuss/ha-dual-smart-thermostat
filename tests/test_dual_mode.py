@@ -327,7 +327,7 @@ async def test_presets_use_case_80(
 
     state = hass.states.get(common.ENTITY)
     assert state.attributes["supported_features"] == 402
-    assert set(state.attributes["preset_modes"]) == set([PRESET_NONE, PRESET_AWAY])
+    assert set(state.attributes["preset_modes"]) == {PRESET_NONE, PRESET_AWAY}
 
     await common.async_set_preset_mode(hass, PRESET_AWAY)
 
@@ -414,15 +414,13 @@ async def test_presets_use_case_150_2(
     assert state.attributes["supported_features"] == 386
 
     modes = state.attributes.get("hvac_modes")
-    assert set(modes) == set(
-        [
-            HVACMode.OFF,
-            HVACMode.HEAT,
-            HVACMode.COOL,
-            HVACMode.HEAT_COOL,
-            HVACMode.AUTO,
-        ]
-    )
+    assert set(modes) == {
+        HVACMode.OFF,
+        HVACMode.HEAT,
+        HVACMode.COOL,
+        HVACMode.HEAT_COOL,
+        HVACMode.AUTO,
+    }
 
     assert hass.states.get(heater_switch).state == STATE_OFF
     assert hass.states.get(cooler_switch).state == STATE_OFF
@@ -481,9 +479,7 @@ async def test_get_hvac_modes_dual(
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(common.ENTITY)
     modes = state.attributes.get("hvac_modes")
-    assert set(modes) == set(
-        [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL, HVACMode.AUTO]
-    )
+    assert set(modes) == {HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL, HVACMode.AUTO}
 
 
 async def test_get_hvac_modes_heat_cool(
@@ -492,15 +488,13 @@ async def test_get_hvac_modes_heat_cool(
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(common.ENTITY)
     modes = state.attributes.get("hvac_modes")
-    assert set(modes) == set(
-        [
-            HVACMode.OFF,
-            HVACMode.HEAT,
-            HVACMode.COOL,
-            HVACMode.HEAT_COOL,
-            HVACMode.AUTO,
-        ]
-    )
+    assert set(modes) == {
+        HVACMode.OFF,
+        HVACMode.HEAT,
+        HVACMode.COOL,
+        HVACMode.HEAT_COOL,
+        HVACMode.AUTO,
+    }
 
 
 async def test_get_hvac_modes_heat_cool_2(
@@ -509,15 +503,13 @@ async def test_get_hvac_modes_heat_cool_2(
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(common.ENTITY)
     modes = state.attributes.get("hvac_modes")
-    assert set(modes) == set(
-        [
-            HVACMode.OFF,
-            HVACMode.HEAT,
-            HVACMode.COOL,
-            HVACMode.HEAT_COOL,
-            HVACMode.AUTO,
-        ]
-    )
+    assert set(modes) == {
+        HVACMode.OFF,
+        HVACMode.HEAT,
+        HVACMode.COOL,
+        HVACMode.HEAT_COOL,
+        HVACMode.AUTO,
+    }
 
 
 # async def test_get_hvac_modes_heat_cool_if_heat_cool_mode_off(
@@ -575,15 +567,13 @@ async def test_dual_get_hvac_modes_fan_configured(
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(common.ENTITY)
     modes = state.attributes.get("hvac_modes")
-    assert set(modes) == set(
-        [
-            HVACMode.OFF,
-            HVACMode.HEAT,
-            HVACMode.COOL,
-            HVACMode.FAN_ONLY,
-            HVACMode.AUTO,
-        ]
-    )
+    assert set(modes) == {
+        HVACMode.OFF,
+        HVACMode.HEAT,
+        HVACMode.COOL,
+        HVACMode.FAN_ONLY,
+        HVACMode.AUTO,
+    }
 
 
 async def test_heat_cool_get_hvac_modes_fan_configured(
@@ -592,16 +582,14 @@ async def test_heat_cool_get_hvac_modes_fan_configured(
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(common.ENTITY)
     modes = state.attributes.get("hvac_modes")
-    assert set(modes) == set(
-        [
-            HVACMode.OFF,
-            HVACMode.HEAT,
-            HVACMode.COOL,
-            HVACMode.HEAT_COOL,
-            HVACMode.FAN_ONLY,
-            HVACMode.AUTO,
-        ]
-    )
+    assert set(modes) == {
+        HVACMode.OFF,
+        HVACMode.HEAT,
+        HVACMode.COOL,
+        HVACMode.HEAT_COOL,
+        HVACMode.FAN_ONLY,
+        HVACMode.AUTO,
+    }
 
 
 async def test_set_hvac_mode_chnage_trarget_temp(
@@ -1279,7 +1267,7 @@ async def test_sensor_unknown_secure_heat_cool_off_outside_stale_duration_heater
         (STATE_UNAVAILABLE, 28, common.ENT_COOLER),
         (STATE_UNKNOWN, 28, common.ENT_COOLER),
         (28, 28, common.ENT_COOLER),
-        (STATE_UNKNOWN, 18, common.ENT_SWITCH),
+        (STATE_UNAVAILABLE, 18, common.ENT_SWITCH),
         (STATE_UNKNOWN, 18, common.ENT_SWITCH),
         (18, 18, common.ENT_SWITCH),
     ],
@@ -1326,7 +1314,7 @@ async def test_sensor_unknown_secure_heat_cool_off_outside_stale_duration(
         (STATE_UNAVAILABLE, 28),
         (STATE_UNKNOWN, 28),
         (28, 28),
-        (STATE_UNKNOWN, 18),
+        (STATE_UNAVAILABLE, 18),
         (STATE_UNKNOWN, 18),
         (18, 18),
     ],

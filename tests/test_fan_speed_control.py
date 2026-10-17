@@ -7,6 +7,7 @@ from homeassistant.components.climate import HVACMode
 from homeassistant.const import SERVICE_TURN_OFF, SERVICE_TURN_ON
 import homeassistant.core as ha
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError, ServiceNotSupported
 import pytest
 
 from custom_components.dual_smart_thermostat.const import (
@@ -503,7 +504,7 @@ async def test_turn_on_handles_fan_mode_service_failure_preset(
     @callback
     def failing_preset_mode_service(call) -> None:
         """Mock failing set_preset_mode."""
-        raise Exception("Entity unavailable")
+        raise HomeAssistantError("Entity unavailable")
 
     hass.services.async_register("fan", "set_preset_mode", failing_preset_mode_service)
 
@@ -564,7 +565,7 @@ async def test_turn_on_handles_fan_mode_service_failure_percentage(
     @callback
     def failing_percentage_service(call) -> None:
         """Mock failing set_percentage."""
-        raise Exception("Entity unavailable")
+        raise HomeAssistantError("Entity unavailable")
 
     hass.services.async_register("fan", "set_percentage", failing_percentage_service)
 
@@ -1386,7 +1387,7 @@ async def test_climate_async_set_fan_mode_when_not_supported(hass: HomeAssistant
 
     # Trying to call set_fan_mode when not supported should raise an error
     # because the service won't be registered for this entity
-    with pytest.raises(Exception):
+    with pytest.raises(ServiceNotSupported):
         await hass.services.async_call(
             "climate",
             "set_fan_mode",

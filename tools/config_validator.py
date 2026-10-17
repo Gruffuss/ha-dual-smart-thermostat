@@ -136,11 +136,8 @@ class ConfigValidator:
                 and param2 in config
                 and config[param1] is not None
                 and config[param2] is not None
-            ):
-                if config[param1] == config[param2]:
-                    errors.append(
-                        f"Conflict: {message} (both set to '{config[param1]}')"
-                    )
+            ) and config[param1] == config[param2]:
+                errors.append(f"Conflict: {message} (both set to '{config[param1]}')")
 
         # Check overrides
         for primary, secondary, message in self.overrides:
@@ -228,7 +225,7 @@ class ConfigValidator:
         }
 
         # Find configured parameters for each feature
-        for feature_name, feature_info in features.items():
+        for feature_info in features.values():
             for param in feature_info["parameters"]:
                 if param in config and config[param] is not None:
                     feature_info["configured"].append(param)

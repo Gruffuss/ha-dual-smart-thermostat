@@ -1,5 +1,7 @@
 """Test openings configuration logic."""
 
+import sys
+
 
 def test_openings_processing_logic():
     """Test the openings processing logic without imports."""
@@ -165,10 +167,10 @@ if __name__ == "__main__":
         print("- ✅ Optional timeout settings for opening and closing")
         print("- ✅ Scope configuration for HVAC mode control")
         print("- ✅ Proper data processing and cleanup")
-        exit(0)
+        sys.exit(0)
     except AssertionError:
         print("\n❌ Openings configuration test assertions failed")
-        exit(1)
+        sys.exit(1)
     except Exception as e:
         print(f"\n❌ Openings configuration tests failed with exception: {e}")
-        exit(1)
+        sys.exit(1)

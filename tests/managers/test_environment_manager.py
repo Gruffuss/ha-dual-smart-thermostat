@@ -1,5 +1,7 @@
 """Tests for EnvironmentManager tolerance selection logic."""
 
+from typing import ClassVar
+
 from homeassistant.components.climate.const import (
     ATTR_TARGET_TEMP_HIGH,
     ATTR_TARGET_TEMP_LOW,
@@ -368,7 +370,6 @@ class TestSetTempsFromPresetWithTemplates:
         self, hass, basic_config, setup_template_test_entities
     ):
         """Test template preset evaluates to float for single target temp (#538)."""
-        setup_template_test_entities
         env = EnvironmentManager(hass, basic_config)
         env._saved_target_temp = 20.0
 
@@ -392,7 +393,6 @@ class TestSetTempsFromPresetWithTemplates:
         self, hass, basic_config, setup_template_test_entities
     ):
         """Test template preset evaluates to floats for range temps (#538)."""
-        setup_template_test_entities
         env = EnvironmentManager(hass, basic_config)
 
         preset_env = PresetEnv(
@@ -421,7 +421,6 @@ class TestSetTempsFromPresetWithTemplates:
         self, hass, basic_config, setup_template_test_entities
     ):
         """Test template range preset falls back to temp_low for HEAT mode (#538)."""
-        setup_template_test_entities
         env = EnvironmentManager(hass, basic_config)
 
         preset_env = PresetEnv(
@@ -448,7 +447,6 @@ class TestSetTempsFromPresetWithTemplates:
         self, hass, basic_config, setup_template_test_entities
     ):
         """Test template range preset falls back to temp_high for COOL mode (#538)."""
-        setup_template_test_entities
         env = EnvironmentManager(hass, basic_config)
 
         preset_env = PresetEnv(
@@ -640,7 +638,10 @@ class TestSavedTargetTempIsNotModeScoped:
     setpoint.
     """
 
-    RANGE_PRESET = {ATTR_TARGET_TEMP_LOW: 20.0, ATTR_TARGET_TEMP_HIGH: 24.0}
+    RANGE_PRESET: ClassVar[dict[str, float]] = {
+        ATTR_TARGET_TEMP_LOW: 20.0,
+        ATTR_TARGET_TEMP_HIGH: 24.0,
+    }
 
     @pytest.mark.parametrize(
         ("hvac_mode", "expected"),
