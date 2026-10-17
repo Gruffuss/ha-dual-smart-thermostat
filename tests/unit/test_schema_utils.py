@@ -381,6 +381,89 @@ class TestHeatingControlFields:
         assert CONF_TPI_COEF_INT in keys
         assert CONF_TPI_COEF_EXT in keys
 
+    @pytest.mark.parametrize(
+        "name,default,minimum,maximum,step",
+        [
+            ("predictive_mae_on", 0.3, 0.05, 2, 0.05),
+            ("predictive_mae_off", 0.45, 0.05, 2, 0.05),
+            ("predictive_min_validations", 48, 12, 500, 1),
+            ("predictive_kp", 65.0, 0, 200, 1),
+            ("predictive_ki", 0.05, 0, 1, 0.005),
+            ("predictive_initial_k_loss", 2.0, 0, 10, 0.1),
+        ],
+    )
+    def test_predictive_number_fields(self, name, default, minimum, maximum, step):
+        """Predictive settings have bounded number selectors and shared defaults."""
+        from homeassistant.helpers.selector import NumberSelector
+
+        from custom_components.dual_smart_thermostat import const
+
+        fields = {
+            key.schema: (key, value)
+            for key, value in get_heating_control_fields().items()
+        }
+        assert name in fields
+        key, value = fields[name]
+        assert isinstance(value, NumberSelector)
+        assert key.default() == default == getattr(const, "DEFAULT_" + name.upper())
+        assert getattr(const, "CONF_" + name.upper()) == name
+        assert value.config["min"] == minimum
+        assert value.config["max"] == maximum
+        assert value.config["step"] == step
+        if "mae" in name:
+            assert value.config["unit_of_measurement"] == "°C"
+        custom = get_heating_control_fields({name: maximum})
+        assert next(key.default() for key in custom if key.schema == name) == maximum
+
+    def test_predictive_mode_and_gate_selectors(self):
+        """Mode and gate use real selects with the documented choices."""
+        from custom_components.dual_smart_thermostat import const
+
+        fields = {
+            key.schema: (key, value)
+            for key, value in get_heating_control_fields().items()
+        }
+        mode = fields[CONF_HEATER_CONTROL_MODE][1]
+        assert {
+            "value": "predictive",
+            "label": "Predictive (learned floor lag)",
+        } in mode.config["options"]
+        assert const.HeaterControlMode.PREDICTIVE.value == "predictive"
+        key, gate = fields["predictive_gate"]
+        assert key.default() == const.DEFAULT_PREDICTIVE_GATE == "auto"
+        assert const.CONF_PREDICTIVE_GATE == "predictive_gate"
+        assert gate.config["options"] == ["auto", "off", "on"]
+
+    def test_predictive_yaml_fields(self):
+        """YAML accepts the new keys and coerces numeric values."""
+        import voluptuous as vol
+
+        from custom_components.dual_smart_thermostat.climate import PLATFORM_SCHEMA
+
+        config = {
+            "platform": "dual_smart_thermostat",
+            "heater": "switch.heater",
+            "target_sensor": "sensor.room",
+            "outside_sensor": "sensor.outdoor",
+            "heater_control_mode": "predictive",
+            "predictive_gate": "on",
+            "predictive_mae_on": "0.25",
+            "predictive_mae_off": "0.5",
+            "predictive_min_validations": "60",
+            "predictive_kp": "45.0",
+            "predictive_ki": "0.1",
+            "predictive_initial_k_loss": "3.0",
+        }
+        validated = PLATFORM_SCHEMA(config)
+        assert validated["predictive_min_validations"] == 60
+        assert validated["predictive_kp"] == 45.0
+        assert validated["predictive_ki"] == 0.1
+        assert validated["predictive_initial_k_loss"] == 3.0
+        assert validated["predictive_mae_on"] == 0.25
+        assert validated["predictive_mae_off"] == 0.5
+        with pytest.raises(vol.Invalid):
+            PLATFORM_SCHEMA({**config, "predictive_gate": "invalid"})
+
     def test_heating_control_fields_prefill_defaults(self):
         fields = get_heating_control_fields(
             {CONF_HEATER_CONTROL_MODE: "tpi", CONF_TPI_COEF_INT: 0.9}

@@ -276,6 +276,13 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_TPI_COEF_INT): vol.Coerce(float),
         vol.Optional(CONF_TPI_COEF_EXT): vol.Coerce(float),
         vol.Optional(CONF_AI_INITIAL_HEATING_POWER): vol.Coerce(float),
+        vol.Optional("predictive_gate", default="auto"): vol.In(["auto", "off", "on"]),
+        vol.Optional("predictive_mae_on", default=0.3): vol.Coerce(float),
+        vol.Optional("predictive_mae_off", default=0.45): vol.Coerce(float),
+        vol.Optional("predictive_min_validations", default=48): vol.Coerce(int),
+        vol.Optional("predictive_kp", default=65.0): vol.Coerce(float),
+        vol.Optional("predictive_ki", default=0.05): vol.Coerce(float),
+        vol.Optional("predictive_initial_k_loss", default=2.0): vol.Coerce(float),
         vol.Optional(CONF_VALVE_MAINTENANCE, default=False): cv.boolean,
         vol.Optional(
             CONF_VALVE_MAINTENANCE_INTERVAL,

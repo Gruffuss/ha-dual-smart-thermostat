@@ -54,6 +54,13 @@ from .const import (
     CONF_MOIST_TOLERANCE,
     CONF_OUTSIDE_SENSOR,
     CONF_PRECISION,
+    CONF_PREDICTIVE_GATE,
+    CONF_PREDICTIVE_INITIAL_K_LOSS,
+    CONF_PREDICTIVE_KI,
+    CONF_PREDICTIVE_KP,
+    CONF_PREDICTIVE_MAE_OFF,
+    CONF_PREDICTIVE_MAE_ON,
+    CONF_PREDICTIVE_MIN_VALIDATIONS,
     CONF_PRESETS,
     CONF_PWM_CYCLE_DURATION,
     CONF_SENSOR,
@@ -68,6 +75,13 @@ from .const import (
     CONF_VALVE_MAINTENANCE,
     CONF_VALVE_MAINTENANCE_INTERVAL,
     DEFAULT_PWM_CYCLE_DURATION,
+    DEFAULT_PREDICTIVE_GATE,
+    DEFAULT_PREDICTIVE_INITIAL_K_LOSS,
+    DEFAULT_PREDICTIVE_KI,
+    DEFAULT_PREDICTIVE_KP,
+    DEFAULT_PREDICTIVE_MAE_OFF,
+    DEFAULT_PREDICTIVE_MAE_ON,
+    DEFAULT_PREDICTIVE_MIN_VALIDATIONS,
     DEFAULT_TOLERANCE,
     DEFAULT_VALVE_MAINTENANCE_INTERVAL,
     SYSTEM_TYPES,
@@ -324,11 +338,7 @@ def get_timing_fields_for_section(
 def get_heating_control_fields(
     defaults: dict[str, Any] | None = None,
 ) -> dict[Any, Any]:
-    """Heater control-mode fields (bang-bang vs TPI/PWM) for the advanced section.
-
-    ``pwm_cycle_duration`` and the TPI coefficients only take effect when the
-    control mode is ``tpi``; they are shown alongside it for convenience.
-    """
+    """Heater modes and their tuning fields for config and options forms."""
     defaults = defaults or {}
     fields: dict[Any, Any] = {}
 
@@ -344,6 +354,10 @@ def get_heating_control_fields(
             {"value": HeaterControlMode.BANG_BANG.value, "label": "Bang-bang (on/off)"},
             {"value": HeaterControlMode.TPI.value, "label": "TPI (time-proportional)"},
             {"value": HeaterControlMode.AI.value, "label": "AI Time Based (learning)"},
+            {
+                "value": HeaterControlMode.PREDICTIVE.value,
+                "label": "Predictive (learned floor lag)",
+            },
         ]
     )
 
@@ -376,6 +390,40 @@ def get_heating_control_fields(
             default=defaults.get(CONF_AI_INITIAL_HEATING_POWER, DEFAULT_HEATING_POWER),
         )
     ] = get_number_selector(min_value=0.005, max_value=0.2, step=0.001)
+
+    fields[
+        vol.Optional(
+            CONF_PREDICTIVE_GATE,
+            default=defaults.get(CONF_PREDICTIVE_GATE, DEFAULT_PREDICTIVE_GATE),
+        )
+    ] = get_select_selector(["auto", "off", "on"])
+
+    for key, default, minimum, maximum, step in (
+        (CONF_PREDICTIVE_MAE_ON, DEFAULT_PREDICTIVE_MAE_ON, 0.05, 2, 0.05),
+        (CONF_PREDICTIVE_MAE_OFF, DEFAULT_PREDICTIVE_MAE_OFF, 0.05, 2, 0.05),
+        (
+            CONF_PREDICTIVE_MIN_VALIDATIONS,
+            DEFAULT_PREDICTIVE_MIN_VALIDATIONS,
+            12,
+            500,
+            1,
+        ),
+        (CONF_PREDICTIVE_KP, DEFAULT_PREDICTIVE_KP, 0, 200, 1),
+        (CONF_PREDICTIVE_KI, DEFAULT_PREDICTIVE_KI, 0, 1, 0.005),
+        (CONF_PREDICTIVE_INITIAL_K_LOSS, DEFAULT_PREDICTIVE_INITIAL_K_LOSS, 0, 10, 0.1),
+    ):
+        fields[vol.Optional(key, default=defaults.get(key, default))] = (
+            get_number_selector(
+                min_value=minimum,
+                max_value=maximum,
+                step=step,
+                unit_of_measurement=(
+                    "°C"
+                    if key in (CONF_PREDICTIVE_MAE_ON, CONF_PREDICTIVE_MAE_OFF)
+                    else None
+                ),
+            )
+        )
 
     fields[
         vol.Optional(
