@@ -58,6 +58,10 @@ class PredictiveSettings:
     # baseline it is judged against. True only reproduces v5 in the
     # equivalence tests; it is not a configuration option.
     persistence_demotion: bool = False
+    # Consecutive valid minutes below sp - 0.5 before the cold-room floor
+    # trips (owner, 2026-10-17: one noisy reading must not demote for 24 h).
+    # 1 is v5's one-sample rule, for the equivalence tests only.
+    cold_floor_minutes: int = 3
 
     def __post_init__(self) -> None:
         """Production protects both segments; zero reproduces the v5 actuator."""
@@ -111,6 +115,7 @@ class PredictiveController:
         self._seen_temp = False
         self._restart = False
         self._cold_floor = False
+        self._cold_minutes = 0
         self._forecast_cache = None
 
     def _switch_mode(self, mode):
@@ -203,6 +208,7 @@ class PredictiveController:
         if self._last_inputs == inp:
             return self._restart
         new_minute = advance and self._processed_at != inp.now_min
+        previous_minute = self._processed_at
         self._last_inputs = replace(inp)
         self._now_min = inp.now_min
         if advance:
@@ -221,7 +227,24 @@ class PredictiveController:
             self._cycle_start = None
             self._restart = True
         self._setpoint = setpoint
-        cold = error is not None and error > 0.5 and inp.demand
+        low = error is not None and error > 0.5 and inp.demand and inp.valid
+        if new_minute:
+            # Consecutive valid ticks below the floor; anything else restarts.
+            consecutive = (
+                previous_minute is None
+                or abs(inp.now_min - previous_minute - 1) <= 0.05
+            )
+            if not low:
+                self._cold_minutes = 0
+            elif consecutive:
+                self._cold_minutes += 1
+            else:
+                self._cold_minutes = 1
+            streak = self._cold_minutes
+        else:
+            # A plan, or this minute again, is one more reading, not a minute.
+            streak = max(self._cold_minutes, 1) if low else 0
+        cold = low and streak >= self.settings.cold_floor_minutes
         if not (cold and self.mode == "predictive"):
             self._restart |= self._update_mode(inp.now_min)
         if cold and self.mode == "predictive":

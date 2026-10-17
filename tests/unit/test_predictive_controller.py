@@ -131,7 +131,8 @@ def test_asymmetric_minimum_off_preserves_minimum_on(minimum):
 
 
 def test_cold_floor_forces_cycle_and_demotes_for_24h():
-    ctl = ready_gate()
+    """v5's one-sample floor; production waits for three minutes (below)."""
+    ctl = ready_gate(cold_floor_minutes=1)
     ctl.mode = "predictive"
     driver = Driver(ctl)
     assert driver.tick(inputs(temp=23.4))
@@ -147,7 +148,7 @@ def test_cold_floor_forces_cycle_and_demotes_for_24h():
 
 
 def test_cold_floor_still_yields_to_demand_fault_and_exercise():
-    ctl = ready_gate()
+    ctl = ready_gate(cold_floor_minutes=1)
     ctl.mode = "predictive"
     driver = Driver(ctl)
     assert driver.tick(inputs(temp=23.4))
@@ -161,7 +162,7 @@ def test_cold_floor_still_yields_to_demand_fault_and_exercise():
 
 
 def test_forced_on_cannot_undo_cold_floor_demotion_after_reload():
-    ctl = controller("on")
+    ctl = controller("on", cold_floor_minutes=1)
     ctl.minute(inputs(temp=23.4))
     saved = json.loads(json.dumps(ctl.to_dict()))
     restored = PredictiveController.from_dict(ctl.settings, saved, 120)
@@ -229,25 +230,106 @@ def test_plan_at_a_sub_minute_offset_does_not_count_a_minute():
 
 def test_cold_floor_survives_a_plan_at_a_sub_minute_offset():
     """The floor's full cycle is kept until a plan uses it (review MEDIUM 3)."""
-    ctl = ready_gate()
-    ctl.mode = "predictive"
     cold = inputs(temp=22.4, outdoor=20, setpoint=23)
-    assert ctl.minute(cold)
-    assert ctl.mode == "fallback"
-    assert ctl.plan(replace(cold, now_min=0.0001)) == 30
+
+    def tripped():
+        ctl = ready_gate()
+        ctl.mode = "predictive"
+        restarts = [ctl.minute(replace(cold, now_min=minute)) for minute in range(3)]
+        assert restarts[-1]
+        assert ctl.mode == "fallback"
+        return ctl
+
+    assert tripped().plan(replace(cold, now_min=2.0001)) == 30
     # A tick may come before the device's restart reaches plan().
-    ctl = ready_gate()
-    ctl.mode = "predictive"
-    assert ctl.minute(cold)
-    ctl.minute(replace(cold, now_min=1))
-    assert ctl.plan(replace(cold, now_min=1.3)) == 30
+    ctl = tripped()
+    ctl.minute(replace(cold, now_min=3))
+    assert ctl.plan(replace(cold, now_min=3.3)) == 30
     # A temperature fault still wins over a pending floor.
+    ctl = tripped()
+    fault = replace(cold, now_min=3, temp=None)
+    ctl.minute(fault)
+    assert ctl.plan(replace(fault, now_min=3.3)) < 30
+
+
+LOW, OK = 23.4, 23.8  # 0.6 and 0.2 below the setpoint of 24
+
+
+def floor_driver():
     ctl = ready_gate()
     ctl.mode = "predictive"
-    assert ctl.minute(cold)
-    fault = replace(cold, now_min=1, temp=None)
-    ctl.minute(fault)
-    assert ctl.plan(replace(fault, now_min=1.3)) < 30
+    return ctl, Driver(ctl)
+
+
+def test_one_or_two_low_minutes_do_not_trip_the_cold_floor():
+    """Owner, 2026-10-17: one noisy reading must not demote for 24 hours."""
+    for low_minutes in (1, 2):
+        ctl, driver = floor_driver()
+        for minute in range(low_minutes):
+            driver.tick(inputs(minute, temp=LOW))
+        driver.tick(inputs(low_minutes, temp=OK))
+        assert ctl.mode == "predictive"
+        assert ctl.demoted_until_min is None
+
+
+def test_three_low_minutes_trip_the_cold_floor():
+    ctl, driver = floor_driver()
+    assert ctl.settings.cold_floor_minutes == 3
+    for minute in (0, 1):
+        driver.tick(inputs(minute, temp=LOW))
+        assert ctl.mode == "predictive"
+    assert driver.tick(inputs(2, temp=LOW))
+    assert ctl.mode == "fallback"
+    assert (driver.start, driver.on) == (2, 30)
+    assert ctl.demoted_until_min == 2 + 1440
+    for minute in range(3, 32):
+        assert driver.tick(inputs(minute, temp=OK))
+    ctl.minute(inputs(1441, temp=OK))
+    assert ctl.mode == "fallback"
+    ctl.minute(inputs(1442, temp=OK))
+    assert ctl.mode == "predictive"
+
+
+@pytest.mark.parametrize(
+    "gap",
+    [
+        {"temp": OK},
+        {"temp": LOW, "valid": False},
+        {"temp": None},
+    ],
+    ids=["reading not low", "invalid minute", "temperature fault"],
+)
+def test_cold_floor_count_resets_on_a_gap(gap):
+    ctl, driver = floor_driver()
+    for minute in (0, 1):
+        driver.tick(inputs(minute, temp=LOW))
+    driver.tick(inputs(2, **gap))
+    for minute in (3, 4):
+        driver.tick(inputs(minute, temp=LOW))
+    assert ctl.mode == "predictive"
+    assert ctl.demoted_until_min is None
+    driver.tick(inputs(5, temp=LOW))
+    assert ctl.mode == "fallback"
+
+
+def test_cold_floor_reading_seen_only_by_a_plan():
+    """A plan's reading is not a minute: it trips only v5's one-sample floor."""
+    for minutes, tripped in ((3, False), (1, True)):
+        ctl = ready_gate(cold_floor_minutes=minutes)
+        ctl.mode = "predictive"
+        ctl.minute(inputs(temp=OK))
+        ctl.plan(inputs(0.3, temp=LOW))
+        assert ctl.mode == ("fallback" if tripped else "predictive")
+        assert (ctl.demoted_until_min is not None) == tripped
+
+
+def test_cold_floor_count_resets_on_a_missed_tick():
+    ctl, driver = floor_driver()
+    for minute in (0, 1, 3, 4):
+        driver.tick(inputs(minute, temp=LOW))
+    assert ctl.mode == "predictive"
+    driver.tick(inputs(5, temp=LOW))
+    assert ctl.mode == "fallback"
 
 
 def test_gate_requires_independent_windows_and_seven_days():

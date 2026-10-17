@@ -25,6 +25,7 @@ def simulate(
     min_off_minutes=None,
     persistence_demotion=False,
     seed=42,
+    cold_floor_minutes=3,
 ):
     theta = (0.03, 0.0015, 0)
     solar_outdoor_mean, solar_outdoor_amplitude = 8, 5
@@ -38,6 +39,7 @@ def simulate(
             gate=mode,
             min_off_minutes=min_off_minutes,
             persistence_demotion=persistence_demotion,
+            cold_floor_minutes=cold_floor_minutes,
         )
     )
     driver = Driver(ctl)
@@ -139,9 +141,10 @@ def assert_solar_margin(pi, predictive):
     assert predictive["overshoot"] <= 0.3 + pi["overshoot"]
 
 
-# The v5-equivalence runs keep v5's actuator (no minimum off) and v5's gate,
-# which also demotes when mae120 exceeds persistence_mae120.
-V5 = {"min_off_minutes": 0, "persistence_demotion": True}
+# The v5-equivalence runs keep v5's actuator (no minimum off), v5's gate,
+# which also demotes when mae120 exceeds persistence_mae120, and v5's
+# one-sample cold-room floor.
+V5 = {"min_off_minutes": 0, "persistence_demotion": True, "cold_floor_minutes": 1}
 
 
 def test_predictive_auto_not_colder_than_pi_with_solar_mismatch_gated():
