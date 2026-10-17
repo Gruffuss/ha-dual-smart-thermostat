@@ -90,6 +90,30 @@ class TestPlanPwm:
         assert plan.on_seconds == pytest.approx(360.0)
         assert plan.off_seconds == pytest.approx(1440.0)
 
+    def test_segment_equal_to_minimum_survives_float_rounding(self):
+        # 100 * 20 / 30 % of 1800 s computes as 1200.0000000000002 s on, so
+        # the off segment is 599.9999999999998 s: the 600 s minimum itself.
+        plan = plan_pwm(100 * 20 / 30, 1800.0, min_segment_seconds=600.0)
+        assert plan.on_seconds == pytest.approx(1200.0)
+        assert plan.off_seconds == pytest.approx(600.0)
+        # (1 / 3) * 100 % of 1800 s computes as 599.9999999999999 s on.
+        plan = plan_pwm((1 / 3) * 100, 1800.0, min_segment_seconds=600.0)
+        assert plan.on_seconds == pytest.approx(600.0)
+        assert plan.off_seconds == pytest.approx(1200.0)
+
+    def test_separate_minimum_off_segment(self):
+        plan = plan_pwm(
+            100 * 25 / 30, 1800.0, min_segment_seconds=600.0, min_off_seconds=0.0
+        )
+        assert plan.on_seconds == pytest.approx(1500.0)
+        assert plan.off_seconds == pytest.approx(300.0)
+        assert plan_pwm(
+            100 * 25 / 30, 1800.0, min_segment_seconds=0.0, min_off_seconds=600.0
+        ) == PwmPlan(on_seconds=1800.0, off_seconds=0.0)
+        assert plan_pwm(
+            100 * 5 / 30, 1800.0, min_segment_seconds=600.0, min_off_seconds=0.0
+        ) == PwmPlan(on_seconds=0.0, off_seconds=1800.0)
+
     def test_no_minimum_keeps_exact_split(self):
         plan = plan_pwm(10.0, 1800.0)
         assert plan.on_seconds == pytest.approx(180.0)

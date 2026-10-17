@@ -5,6 +5,9 @@ The caller supplies learning validity, including the 15-minute window and
 demand as well as validity. Invalid AC minutes alone do not suppress heating.
 Call minute before plan at a PWM boundary; plan also accepts the first sample
 itself. The controller integrates PI once per minute, never once per cycle.
+A plan never counts a minute: the device's PWM boundary reads the clock apart
+from the minute tick, so plan() works from the last processed minute with the
+current readings, whatever its now_min.
 """
 
 from __future__ import annotations
@@ -50,6 +53,11 @@ class PredictiveSettings:
     ki: float = 0.05
     k_loss: float = 2.0
     min_off_minutes: int | None = None
+    # v5 also demoted when mae120 > persistence_mae120. The owner dropped that
+    # (2026-10-17): a room held steady by predictive shrinks the persistence
+    # baseline it is judged against. True only reproduces v5 in the
+    # equivalence tests; it is not a configuration option.
+    persistence_demotion: bool = False
 
     def __post_init__(self) -> None:
         """Production protects both segments; zero reproduces the v5 actuator."""
@@ -133,7 +141,10 @@ class PredictiveController:
             mode = "predictive"
         elif self.mode == "predictive" and (
             tracker.mae120 > settings.mae_off
-            or tracker.mae120 > tracker.persistence_mae120
+            or (
+                settings.persistence_demotion
+                and tracker.mae120 > tracker.persistence_mae120
+            )
         ):
             mode = "fallback"
         return self._switch_mode(mode)
@@ -178,14 +189,24 @@ class PredictiveController:
 
     def minute(self, inp: MinuteInputs) -> bool:
         """Process a minute and return whether the current PWM cycle must restart."""
+        return self._evaluate(inp, advance=True)
+
+    def _evaluate(self, inp, advance):
+        """Evaluate readings; only an advancing call may count a new minute.
+
+        A new minute samples the model, the tracker, PI integration and loss
+        learning. Otherwise (the same minute again, or a plan) the setpoint,
+        gate, cold floor and PI output are re-evaluated from the readings.
+        """
         if self._last_inputs == inp:
             return self._restart
-        new_minute = self._processed_at != inp.now_min
+        new_minute = advance and self._processed_at != inp.now_min
         self._last_inputs = replace(inp)
-        self._processed_at = self._now_min = inp.now_min
+        self._now_min = inp.now_min
+        if advance:
+            self._processed_at = inp.now_min
         self._restart = False
         if new_minute:
-            self._cold_floor = False
             self._sample_model(inp)
         temp, setpoint = finite_float(inp.temp), finite_float(inp.setpoint)
         previous_fault = self._fault
@@ -217,6 +238,8 @@ class PredictiveController:
         ff = self.learner.feedforward(setpoint, finite_float(inp.outdoor))
         dt = inp.now_min - self._last_update if self._last_update is not None else 1
         if self._fault:
+            # A temperature fault wins over a cold-room floor not yet planned.
+            self._cold_floor = False
             self.pi.freeze_output(ff if self._seen_temp else 0)
             self.learner.reset("temperature unavailable")
             if not previous_fault:
@@ -237,6 +260,8 @@ class PredictiveController:
             self.pi.p = self.pi.kp * error
             self.pi.i = self.pi.ki * self.pi.integral
             self.pi.output = clamp(ff + self.pi.p + self.pi.i)
+        if not advance:
+            return self._restart
         self._last_update = inp.now_min
         elapsed = (
             inp.now_min - self._cycle_start if self._cycle_start is not None else None
@@ -258,19 +283,16 @@ class PredictiveController:
         if self._fault or not inp.valid or not self._demand:
             self.learner.reset("invalid sample")
             return
-        elapsed = inp.now_min - self._cycle_start
+        # A plan may read the clock just after the minute it completes.
+        elapsed = max(0.0, inp.now_min - self._cycle_start)
+        # Loss learning counts the same actuator command as the device.
         pwm = plan_pwm(
             100 * self._on_minutes / self.bank.cycle_time,
             60 * self.bank.cycle_time,
+            60 * self.bank.min_on_time,
+            min_off_seconds=60 * self.settings.min_off_minutes,
         )
-        # plan_pwm has one symmetric minimum. Apply the two sides separately
-        # so loss learning counts the same actuator command as the device.
-        on_seconds = pwm.on_seconds
-        if 0 < on_seconds < 60 * self.bank.min_on_time:
-            on_seconds = 0
-        elif 0 < pwm.off_seconds < 60 * self.settings.min_off_minutes:
-            on_seconds = 60 * self.bank.cycle_time
-        valve = elapsed + 0.05 < on_seconds / 60
+        valve = elapsed + 0.05 < pwm.on_seconds / 60
         update = self.learner.sample(
             True, self._setpoint, inp.temp, finite_float(inp.outdoor), valve
         )
@@ -279,8 +301,13 @@ class PredictiveController:
             transfer_integral(self.pi, old, self.learner.k, mean_delta)
 
     def plan(self, inp: MinuteInputs) -> float:
-        """Plan on-minutes at a boundary (PI banking retains fractional minutes)."""
-        self.minute(inp)
+        """Plan on-minutes at a boundary (PI banking retains fractional minutes).
+
+        Only the first sample ever is processed as a minute here. Otherwise the
+        plan uses the last processed minute's learning state and the current
+        readings, and keeps a pending cold-room floor until it plans it.
+        """
+        self._evaluate(inp, advance=self._processed_at is None)
         if not inp.demand or finite_float(inp.setpoint) is None:
             self._idle()
             return 0
@@ -310,7 +337,8 @@ class PredictiveController:
         self._cycle_start = inp.now_min
         self._restart = False
         self._cold_floor = False
-        self._sample_loss(inp)
+        # The boundary minute's loss sample waited for this valve command.
+        self._sample_loss(replace(inp, now_min=self._processed_at))
         return on
 
     def forecasts(

@@ -18,19 +18,32 @@ from tests.unit.test_predictive_model import plant_step
 
 
 @lru_cache(maxsize=None)
-def simulate(mode, solar=False, gated=False, min_off_minutes=None):
+def simulate(
+    mode,
+    solar=False,
+    gated=False,
+    min_off_minutes=None,
+    persistence_demotion=False,
+    seed=42,
+):
     theta = (0.03, 0.0015, 0)
     solar_outdoor_mean, solar_outdoor_amplitude = 8, 5
     if solar:
         min_outdoor = solar_outdoor_mean - solar_outdoor_amplitude
         assert theta[0] / theta[1] + min_outdoor >= 21 + 1
     ctl = PredictiveController(
-        PredictiveSettings(30, 10, gate=mode, min_off_minutes=min_off_minutes)
+        PredictiveSettings(
+            30,
+            10,
+            gate=mode,
+            min_off_minutes=min_off_minutes,
+            persistence_demotion=persistence_demotion,
+        )
     )
     driver = Driver(ctl)
     temp, slab = (21, 0.8) if solar else (18, 0)
     on_minutes = hot_run = max_hot_run = 0
-    rng = random.Random(42)
+    rng = random.Random(seed)
     promotions, demotions, transitions = [], [], []
     temperatures = []
     demand = True
@@ -83,7 +96,7 @@ def simulate(mode, solar=False, gated=False, min_off_minutes=None):
         "transitions": transitions,
     }
     print(
-        f"\nCLOSED_LOOP mode={mode} solar={solar} gated={gated} "
+        f"\nCLOSED_LOOP mode={mode} solar={solar} gated={gated} seed={seed} "
         f"min_off={ctl.settings.min_off_minutes} {result}"
     )
     return result
@@ -102,6 +115,17 @@ def test_predictive_tracks_better_than_pi():
     assert predictive["overshoot"] <= 0.3
 
 
+def solar_margin_met(pi, predictive):
+    return (
+        predictive["minutes_below_sp_minus_0_3"]
+        <= pi["minutes_below_sp_minus_0_3"] + 60
+        and predictive["minutes_below_sp_minus_0_7"]
+        <= pi["minutes_below_sp_minus_0_7"] + 60
+        and predictive["min_temp"] >= pi["min_temp"] - 0.1
+        and predictive["overshoot"] <= 0.3 + pi["overshoot"]
+    )
+
+
 def assert_solar_margin(pi, predictive):
     assert (
         predictive["minutes_below_sp_minus_0_3"]
@@ -115,9 +139,14 @@ def assert_solar_margin(pi, predictive):
     assert predictive["overshoot"] <= 0.3 + pi["overshoot"]
 
 
+# The v5-equivalence runs keep v5's actuator (no minimum off) and v5's gate,
+# which also demotes when mae120 exceeds persistence_mae120.
+V5 = dict(min_off_minutes=0, persistence_demotion=True)
+
+
 def test_predictive_auto_not_colder_than_pi_with_solar_mismatch_gated():
-    pi = simulate("off", solar=True, gated=True, min_off_minutes=0)
-    predictive = simulate("auto", solar=True, gated=True, min_off_minutes=0)
+    pi = simulate("off", solar=True, gated=True, **V5)
+    predictive = simulate("auto", solar=True, gated=True, **V5)
     assert_solar_margin(pi, predictive)
     assert_v5_measurements(pi, 3288, 7866, 19.649872839, 0.281292166)
     assert_v5_measurements(predictive, 3175, 7752, 19.673562927, 0.281292166)
@@ -135,8 +164,8 @@ def assert_v5_measurements(result, below_07, below_03, min_temp, overshoot):
 
 
 def test_predictive_port_matches_v5_always_on_diagnostic():
-    pi = simulate("off", solar=True, min_off_minutes=0)
-    predictive = simulate("auto", solar=True, min_off_minutes=0)
+    pi = simulate("off", solar=True, **V5)
+    predictive = simulate("auto", solar=True, **V5)
     assert_v5_measurements(pi, 2124, 3999, 19.726638896, 0.486864199)
     assert_v5_measurements(predictive, 2228, 4080, 19.726638896, 0.503619152)
     assert pi["promotions_minute"] == pi["demotions_minute"] == []
@@ -144,5 +173,47 @@ def test_predictive_port_matches_v5_always_on_diagnostic():
     assert predictive["demotions_minute"] == [10665, 14222]
 
 
+# Owner, 2026-10-17: one seed's auto - PI difference in cold minutes has a
+# spread of about 180 minutes against the 60-minute margin, so the margin
+# applies to the mean of the per-seed differences over these seeds.
+ACCEPTANCE_SEEDS = range(32)
+SOLAR_KEYS = (
+    "minutes_below_sp_minus_0_3",
+    "minutes_below_sp_minus_0_7",
+    "min_temp",
+    "overshoot",
+)
+
+
 def test_predictive_auto_not_colder_than_pi_with_solar_mismatch():
-    assert_solar_margin(simulate("off", solar=True), simulate("auto", solar=True))
+    pairs = [
+        (
+            simulate("off", solar=True, seed=seed),
+            simulate("auto", solar=True, seed=seed),
+        )
+        for seed in ACCEPTANCE_SEEDS
+    ]
+
+    def mean(values):
+        values = list(values)
+        return sum(values) / len(values)
+
+    difference = {
+        key: mean(auto[key] - pi[key] for pi, auto in pairs) for key in SOLAR_KEYS
+    }
+    pi_mean = {key: mean(pi[key] for pi, _ in pairs) for key in SOLAR_KEYS}
+    auto_mean = {key: mean(auto[key] for _, auto in pairs) for key in SOLAR_KEYS}
+    met = sum(solar_margin_met(pi, auto) for pi, auto in pairs)
+    # Diagnostic only: the former single-seed acceptance.
+    seed_42 = solar_margin_met(
+        simulate("off", solar=True), simulate("auto", solar=True)
+    )
+    print(
+        f"\nSOLAR_ACCEPTANCE seeds={len(pairs)} mean auto-PI {difference}"
+        f" PI mean {pi_mean} auto mean {auto_mean}"
+        f" per-seed margin met {met}/{len(pairs)} seed 42 met {seed_42}"
+    )
+    assert difference["minutes_below_sp_minus_0_3"] <= 60
+    assert difference["minutes_below_sp_minus_0_7"] <= 60
+    assert difference["min_temp"] >= -0.1
+    assert difference["overshoot"] <= 0.3
