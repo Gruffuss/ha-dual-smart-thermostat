@@ -80,7 +80,7 @@ The numbers are v5's. "(a)-(e)" are the heating session's fix-round items, and t
 
 ## Design decisions
 
-My decisions are marked **(mine)**. Points that need the owner are collected at the end.
+My decisions are marked **(mine)**. The owner's rulings are in the "Decision log" at the end.
 
 ### 1. Where the code lives and how the PWM loop asks for on-minutes
 
@@ -88,7 +88,7 @@ New pure modules:
 
 - `control/predictive_model.py`: a port of `SlabRLS`, `RoomModel`, `forecast`, `hold_duty`, `valve_plan`, `plan_cycle` and `AccuracyTracker`. Names, signatures and numbers are kept identical, so the v5 tests port one to one.
   - **(mine)** The only signature change is `plan_cycle(..., min_off=0)`, which restricts candidates to what the actuator executes. The fork's `control/pwm.py:plan_pwm` collapses an off-segment shorter than `min_cycle_duration` to full on. So the candidate set becomes `{0} ∪ [min_on, cycle − min_off] ∪ {cycle}`, with `min_on = min_off = ceil(min_cycle_duration / 60 s)`. Without this, the planner would score an on of 25 min while `plan_pwm` executes 30, and the tracker would blame the model.
-- `control/pi_fallback.py` (only if the owner keeps the PI fallback; see section 4): a port of `DutyBank`, `PIController`, `LossLearner` and `transfer_integral` (`adaptive_pid_heating.py:31-138`).
+- `control/pi_fallback.py`: the fallback controller (owner, 2026-10-17: a port of v4's PI with heat-loss feed-forward). It ports `DutyBank`, `PIController`, `LossLearner` and `transfer_integral` (`adaptive_pid_heating.py:31-138`).
 - `control/predictive.py`: **(mine)** the whole per-minute decision logic as one pure class. The HA device stays thin glue, and the closed-loop simulations run on the pure class at stdlib speed, as v5's ran on the app with a stub clock.
 
 ```python
@@ -189,10 +189,10 @@ Factory wiring: `hvac_device_factory.py:355` (`_create_heater_device`) gains a `
 ### 4. Accuracy gate and fallback; what HA shows
 
 - The gate is exactly as "Requirements". Settings: `predictive_gate` (`auto | off | on`), `predictive_mae_on`, `predictive_mae_off` and `predictive_min_validations`. The 672-block minimum is a constant, not a setting **(mine)**: the owner asked for 7 days, not a knob.
-- **Fallback controller: owner decision.**
-  - **Recommended: a port of the v4 PI** (PIController + LossLearner feed-forward + DutyBank, kp/ki per room from `apps.yaml`: 65/0.05, living_room 45/0.05). v5's gate and its closed-loop numbers (results file table: PI 0.0698 °C MAE last 24 h, 0 overshoot) are measured against it, and it is what drives the valves today through AppDaemon. Learning needs ≥7 days before any promotion, so the fallback runs the room that whole time.
-  - **Alternative: bang_bang**, the existing `HeaterHvacConroller` that `HeaterDevice` already builds (`heater_device.py:45`). It costs no new code, but with a 2 h lag it reproduces the late-start and overshoot behaviour the owner is leaving.
-  - The fork's fixed TPI (`control/tpi.py`) is not proposed: its coefficients are untuned, and nothing measured it on this house.
+- **Fallback controller (owner, 2026-10-17): a port of v4's PI with heat-loss feed-forward.** That is PIController + LossLearner feed-forward + DutyBank, with kp/ki per room from `apps.yaml`: 65/0.05, living_room 45/0.05.
+  - v5's gate and its closed-loop numbers are measured against it, and it is what drives the valves today through AppDaemon.
+  - Learning needs ≥7 days before any promotion, so the fallback runs the room that whole time.
+  - Not used: bang_bang (`HeaterHvacConroller`, `heater_device.py:45`), which reproduces the late start; and the fork's fixed TPI (`control/tpi.py`), whose coefficients are untuned.
 - **Entities (mine): sensor entities, not attributes,** so the recorder keeps history and long-term statistics.
   - They are created by `sensor.py` only when `heater_control_mode == predictive`, as `EntityCategory.DIAGNOSTIC` entities with `unique_id = f"{sensor_key}_predictive_{key}"`.
   - Each listens to a dispatcher signal `SET_PREDICTIVE_SENSOR_SIGNAL.format(sensor_key)`, the same pattern as `HvacActionReasonSensor` (`sensor.py`, `SET_HVAC_ACTION_REASON_SENSOR_SIGNAL` at `const.py:169`).
@@ -213,18 +213,14 @@ Factory wiring: `hvac_device_factory.py:355` (`_create_heater_device`) gains a `
   - `HeaterCoolerDevice` passes `cooler_device` to the heater at construction: a new `set_sibling_cooler(device)` called in `heater_cooler_device.py:__init__`.
   - Minutes are invalid while the AC is active and for 30 min after (v5 `:572-579`). The tracker is invalidated.
 - The AC running does not stop predictive heating, as in v5. In heat_cool the heater's target is `target_temp_low`, so the planner only fights the AC if the band is narrow. That is a configuration matter.
-- **Optional, owner decision: a heat-then-cool interlock** `predictive_cool_interlock` (boolean, default off).
-  - When on, in heat_cool the cooler may start only when every candidate slab S < 0.2 **(mine: threshold)**. The slab still delivers heat for about tau after the valve closes, so cooling against it wastes energy.
-  - When `too_hot` and the interlock blocks, `async_heater_cooler_toggle` keeps the cooler off and the heater's plan is forced to 0 for that cycle.
-  - It is listed as an option because the owner said "consider", not "require".
+- **No heat-then-cool interlock** (owner, 2026-10-17). The cooler logic in `HeaterCoolerDevice` is unchanged; see "Ideas".
 
 ### 6. Config, reconfigure and options flow; translations
 
 - **`schemas.py:get_heating_control_fields`** (`:324`), used by the simple_heater advanced section (`:490`), heater_cooler (`:558`) and the options core schema (`:992`):
   - add `{"value": "predictive", "label": "Predictive (learned floor lag)"}` to the select at `:343-347`;
   - add `predictive_gate` (select auto/off/on), `predictive_mae_on` (number 0.05-2, step 0.05, °C), `predictive_mae_off` (number 0.05-2, step 0.05, °C) and `predictive_min_validations` (number 12-500, step 1);
-  - if the PI fallback is kept: `predictive_kp` (0-200, step 1), `predictive_ki` (0-1, step 0.005) and `predictive_initial_k_loss` (0-10, step 0.1);
-  - if chosen: `predictive_cool_interlock` (boolean, heater_cooler only).
+  - for the PI fallback: `predictive_kp` (0-200, step 1), `predictive_ki` (0-1, step 0.005) and `predictive_initial_k_loss` (0-10, step 0.1).
 - **Outdoor sensor:** `outside_sensor` is required when `heater_control_mode == predictive`. The schema validator raises `errors["base"] = "predictive_requires_outside_sensor"`. The selector already exists (`schemas.py:1153`, a sensor-domain `get_entity_selector`). Add the dependency rows to `tools/config_validator.py:66-69` and `tools/focused_config_dependencies.json:107-111`, and extend the existing `pwm_cycle_duration` row (`required_value: ["tpi", "ai"]`) with `"predictive"`.
 - **YAML schema:** in `climate.py:271-278` add the same keys, with `vol.In` for the gate and `vol.Coerce(float/int)` for the rest.
 - **Translations:** `translations/en.json` has the heater-control labels and descriptions in two sections (`:88-104` and `:202-220`). Add the new keys to both, plus the options-flow section if one exists.
@@ -262,7 +258,7 @@ Pure tests port the v5 suites one to one; they use pytest functions with no hass
   - `test_predictive_without_outdoor_uses_fallback`.
 - `tests/unit/test_predictive_closed_loop.py` ports `.tests/test_closed_loop.py`, driving `PredictiveController` plus `plan_pwm` minute by minute against the same plant (`plant_step` from `.tests/test_model.py`, readings rounded to 0.1 °C):
   - `test_predictive_closed_loop_limits`: overshoot ≤ 0.3, MAE over the last 24 h ≤ 0.2, max hot run < 240;
-  - `test_predictive_tracks_better_than_pi`: predictive MAE over the last 24 h < PI's, and max overshoot ≤ 0.3 (only with the PI fallback). This replaces v5's strict "beats PI on overshoot" expected failure, as the v5 fix round did (heating session, 2026-10-17: PI never overshoots that simulated plant);
+  - `test_predictive_tracks_better_than_pi`: predictive MAE over the last 24 h < PI's, and max overshoot ≤ 0.3. This replaces v5's strict "beats PI on overshoot" expected failure, as the v5 fix round did (heating session, 2026-10-17: PI never overshoots that simulated plant);
   - `test_predictive_auto_with_solar_mismatch_never_cold`: 10 days, sinusoidal outdoor, solar gain 10:00-16:00, noise σ 0.05, seed 42. Zero minutes below sp − 0.7, min T ≥ 20.3.
   - In the fork, demand comes from the hvac mode, not from v5's `switch.d` hysteresis (`test_closed_loop.py:42-46`). The solar test therefore keeps the room in HEAT mode throughout, and asserts the same limits **(mine; a deviation from the source test, logged here)**.
 
@@ -313,7 +309,7 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
 2. Install it and **restart HA core**. The restart also kills any AI PWM loops leaked before `bfa605a`.
 3. Copy the AppDaemon state file (`/addon_configs/a0d7b954_appdaemon/apps/adaptive_pid_state.json`) to `/config/predictive_import/adaptive_pid_state.json` over Samba, right after AppDaemon's 5-minute save.
 
-**Per room, one pilot room first (owner's choice):**
+**Per room. The pilot is the bathroom** (owner, 2026-10-17): `climate.bathroom_dual`, a simple heater, valve `switch.upstairs_bathroom_heating`, AppDaemon room `bathroom`. The other six follow only after the pilot is verified.
 1. **Take the room out of AppDaemon.**
    - Remove `rooms.<room>` from `apps.yaml` in the AppDaemon repo, push, and pull in the deployed folder. This is the heating session's deploy path (memory `ha-heating-appdaemon`).
    - AppDaemon's `terminate()` closes all enabled valves on the app reload (`adaptive_pid_heating.py:501-512`). The other rooms re-initialise from the state file.
@@ -321,7 +317,7 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
    - heater = the valve in the table;
    - `heater_control_mode` = predictive, `pwm_cycle_duration` 1800 s, `min_cycle_duration` 600 s;
    - `outside_sensor` = `sensor.pirateweather_temperature` (AppDaemon's `outdoor_temperature_sensor`);
-   - `predictive_gate` = auto; kp/ki from `apps.yaml` if the PI fallback is kept;
+   - `predictive_gate` = auto; `predictive_kp`/`predictive_ki` from `apps.yaml` (bathroom 65/0.05);
    - valve maintenance on.
 
    The reconfigure features step pre-ticks configured features, and unticking deletes them (memory). Keep openings and presets ticked.
@@ -342,7 +338,7 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
 
 - **Wave 1, one Codex builder (pure, add-only):**
   - Task 1 `control/predictive_model.py` + `tests/unit/test_predictive_model.py`;
-  - Task 2 `control/pi_fallback.py` (if chosen) + `control/predictive.py` + `tests/unit/test_predictive_controller.py` + `tests/unit/test_predictive_closed_loop.py`.
+  - Task 2 `control/pi_fallback.py` + `control/predictive.py` + `tests/unit/test_predictive_controller.py` + `tests/unit/test_predictive_closed_loop.py`.
 
   Each test is seen failing first, then the suite runs with the exit code read.
 - **Wave 2, one builder (HA glue), stacked on Wave 1 once it reports DONE:**
@@ -352,13 +348,19 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
   - Task 4: `schemas.py`, the YAML schema in `climate.py:271-278` (coordinated: Task 3 does not touch those lines), translations, tools validator/deps/docs;
   - plus the config-flow tests.
 - **One Sonnet review of both waves.** Fix rounds for medium and high findings go to the warm builders. Then the full suite on the merged tip (Windows venv), then Docker test and lint before release.
-- **Task 5, owner and heating session:** release, cut-over of the pilot room, then the others (section 8).
+- **Task 5, owner and heating session:** release, cut-over of the pilot room (bathroom), then the others (section 8).
 
-## Owner decisions needed
+## Decision log
 
-1. **Fallback controller:** port v4 PI (recommended, section 4) or use bang_bang.
-2. **Heat-then-cool interlock** (section 5): include `predictive_cool_interlock` or leave it out.
-3. **Pilot room** for the first cut-over.
+- 2026-10-17 (owner, relayed by the heating session):
+  - The fallback is a port of v4's PI with heat-loss feed-forward.
+  - No heat-then-cool interlock.
+  - The pilot room is the bathroom (`climate.bathroom_dual`).
+  - The strict "predictive beats PI on overshoot" criterion is replaced by the v5 fix round's "MAE last 24 h < PI's and overshoot ≤ 0.3", plus the solar-mismatch never-cold test.
+
+## Ideas (later, owner's choice)
+
+- **Heat-then-cool interlock** (owner said no on 2026-10-17). In heat_cool the cooler would start only once the slab has decayed (S < 0.2), so the AC does not cool against stored floor heat.
 
 ## Left out
 
