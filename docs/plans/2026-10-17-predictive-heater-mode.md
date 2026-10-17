@@ -115,7 +115,8 @@ class MinuteInputs:
     temp: float | None
     outdoor: float | None         # last known; None until one exists
     valve_on: bool                # switch state over the minute that just ended
-    setpoint: float | None        # None = not heating (hvac off / cool / fan / dry)
+    setpoint: float | None        # the heating target; None only when the mode has none (cool / fan / dry)
+    demand: bool                  # heating allowed now: v5's demand switch (`:645-653`); off -> v5's _idle path
     valid: bool                   # learning validity (section 2)
 
 class PredictiveController:
@@ -127,7 +128,8 @@ class PredictiveController:
         # return True when the running cycle must restart now (cold-room floor, a gate switch)
     def plan(self, inp: MinuteInputs) -> int
         # at a cycle boundary: on-minutes for this cycle (predictive: plan_cycle;
-        # fallback: PI + DutyBank; no setpoint -> 0)
+        # fallback: PI + DutyBank; demand off or no setpoint -> 0 via v5's idle path:
+        # bank cleared, PI output frozen at 0, loss learner reset; the model keeps learning)
     def forecasts(self, inp: MinuteInputs, cycle_elapsed: int, on_minutes: int) -> dict[int, float | None]
         # +30/+60/+120/+180/+240, cached path + analytic correction (v5 :787-826)
     def to_dict(self) -> dict
@@ -150,7 +152,7 @@ Factory wiring: `hvac_device_factory.py:355` (`_create_heater_device`) gains a `
 
 ### 2. Demand semantics
 
-- **When it may heat:** the hvac mode is HEAT (target `_target_temp`), or HEAT_COOL / AUTO-dispatched heat (target `_target_temp_low`, per `HeaterDevice.target_env_attr`, `hvac_device/heater_device.py:56-60`). In every other mode `setpoint=None`: the plan is 0 and the device keeps learning (off periods teach beta and gamma, v5 Design "Valid block").
+- **When it may heat:** the hvac mode is HEAT (target `_target_temp`), or HEAT_COOL / AUTO-dispatched heat (target `_target_temp_low`, per `HeaterDevice.target_env_attr`, `hvac_device/heater_device.py:56-60`). The device sets `demand=True` exactly then. In every other mode (OFF, COOL, FAN_ONLY, DRY) `demand=False`, and the setpoint is passed unchanged where the mode has one: the plan is 0 through v5's idle path, and the device keeps learning (off periods teach beta and gamma, v5 Design "Valid block").
 - **No tolerance gating.** `cold_tolerance` and `hot_tolerance` do not apply. The planner's cost decides, including an early start when T ≥ sp but the forecast falls below sp. This is the owner's reason for the port.
 - **Heat_cool needs a device change** (verified in the code):
   - `HeaterCoolerDevice._async_auto_toggle` (`hvac_device/heater_cooler_device.py:178-195`) calls the heater only when `too_cold` (T < low − cold_tolerance). Otherwise it calls `async_turn_off_all` at `:195`. So in heat_cool the heater sub-device never sees a pass while the room sits inside the band, and early start cannot happen.
@@ -277,7 +279,7 @@ Pure tests port the v5 suites one to one; they use pytest functions with no hass
     - The acceptance is **relative**, as the owner ruled for v5: auto minutes below sp − 0.3 and below sp − 0.7 are each ≤ PI's + 60; auto min T ≥ PI's − 0.1; auto overshoot ≤ PI's + 0.3.
     - Absolute cold time under strong unmodelled solar gain is an open problem shared by PI and predictive (results file, "Open"). It is not a requirement here.
   - **Two solar tests, both must pass, with the same unchanged relative margin** (owner, 2026-10-17, "Decision log"):
-    - `test_predictive_auto_not_colder_than_pi_with_solar_mismatch_gated` is the **v5 equivalence test**. Demand is gated with v5's hysteresis on the reading: on below 20.7, off at ≥ 21 (`test_closed_loop.py:48-52` at `c761462`). In the port that gating is driven by switching the setpoint input between 21 and None.
+    - `test_predictive_auto_not_colder_than_pi_with_solar_mismatch_gated` is the **v5 equivalence test**. Demand is gated with v5's hysteresis on the reading: on below 20.7, off at ≥ 21 (`test_closed_loop.py:48-52` at `c761462`). In the port that gating toggles `MinuteInputs.demand` while the setpoint stays 21, so the test runs v5's demand-off path (`_idle`, `:529-538`) and not a setpoint change, which would add the setpoint-change resets (`:547-556`) that v5's gated run does not have. **(Mine; corrected 2026-10-17 after the owner asked whether altering the setpoint was the right way: it was not.)**
     - `test_predictive_auto_not_colder_than_pi_with_solar_mismatch` is the **acceptance**. Demand is always on, which is the faithful setup for the port: there is no demand switch, and predictive and its PI fallback heat continuously while the hvac mode is HEAT.
   - **The acceptance is expected to fail at first.** v5's own always-on diagnostic (results file, second solar table) has auto over the margin: 2228 vs PI's 2124 + 60 minutes below sp − 0.7, and 4080 vs 3999 + 60 below sp − 0.3. Min T and overshoot pass. Those numbers come from the results file; I did not run them.
     - Task 2b finds and fixes the cause.
