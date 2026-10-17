@@ -6,10 +6,12 @@
 
 **Why (owner, relayed 2026-10-17):** with bang_bang thermostats switching an AppDaemon demand switch, the controller can only stop heating early, never start early. Demand stays off until T < sp − 0.3 (cold tolerance). Inside the thermostat the planner sees the target directly.
 
-**Spec sources (read-only, AppDaemon repo `C:\tmp_ad\ad`, branch `v5-predictive`):**
+**Spec sources (read-only, AppDaemon repo `C:\tmp_ad\ad`, final v5 = `c761462` on `master`, same tip as `v5-predictive`; live in AppDaemon since 2026-10-17 13:53, 7/7 rooms in `pi` mode):**
 - `docs/superpowers/plans/2026-10-17-predictive-heating-v5.md`, the "Design" section (model, learning, forecast, planner, tracker, gate).
-- `docs/superpowers/plans/2026-10-17-predictive-heating-v5-results.md`, rulings 1-10 (16-reading blocks, zero-on exclusion, gate before planning, frozen PI, no invented outdoor, horizon-wise tracker resume).
-- `adaptive_pid_heating.py` lines 1-357, the pure section above `# --- AppDaemon app ---`, as read on 2026-10-17. A fix round is in progress there and is uncommitted. Its working tree already contains every requirement (a)-(e) listed below. **Re-read that file when the heating session reports the fix round landed. Diff it against the port before Task 1 is reviewed.**
+- `docs/superpowers/plans/2026-10-17-predictive-heating-v5-results.md` at `c761462`: its "Rulings and deviations", "Ten-day solar mismatch" and "Review regression coverage" sections.
+- `adaptive_pid_heating.py` at `c761462`: lines 1-358 are the pure section above `# --- AppDaemon app ---`; the glue is lines 359-981. All `:<line>` citations below are to this commit.
+- Tests at `c761462`: `.tests/test_model.py`, `.tests/test_v5_review.py` (the review regressions; there is no `test_review_regressions.py`), `.tests/test_closed_loop.py` and `.tests/test_app.py`.
+- Diffed against the plan on 2026-10-17. The pure section is unchanged from the working copy the plan was first written from (one redundant parenthesis), and the changes since are folded in below.
 
 **Prerequisite:** branch `fix/ai-heats-above-target`, which this plan's branch is cut from:
 - `bfa605a`: `MultiHvacDevice.call_on_remove_callbacks` forwards to sub-devices, so PWM timers die with the entity.
@@ -24,7 +26,7 @@ The predictive device subclasses `PwmHeaterDevice` and inherits both.
 - Per control pass the cost stays bounded, as in v5's Global Constraints:
   - the planner runs once per cycle boundary: 22 candidates x 240 steps;
   - the per-minute model update is O(6 candidates);
-  - forecast sensors use v5's cached path plus an analytic correction (`adaptive_pid_heating.py:782-834`). They never re-simulate every minute.
+  - forecast sensors use v5's cached path plus an analytic correction (`adaptive_pid_heating.py:787-839`). They never re-simulate every minute.
 - Every new config option goes through the config, reconfigure and options flows with real selectors (CLAUDE.md "Configuration Flow Integration"; project memory "no UX shortcuts"). It is also added to `tools/focused_config_dependencies.json`, `tools/config_validator.py` and `docs/config/CRITICAL_CONFIG_DEPENDENCIES.md`.
 - Config-flow tests use the real `hass` fixture, not MagicMock (project memory: `StateMachine` has `async_all()`, not `values()`).
 - Line endings LF; stage by path; plain commit messages; one branch per wave, cut from `plan/predictive-heater-mode`.
@@ -42,7 +44,7 @@ The numbers are v5's. "(a)-(e)" are the heating session's fix-round items, and t
   - The active tau is the argmin of err; ties go nearest 120, then the smaller tau (`:217-218`).
 - **(e) Covariance and restore:**
   - After each update P is symmetrised and its diagonals capped at 100·P0 by D·P·D scaling (`:196-201`).
-  - On restore the slab decays by `exp(−downtime/tau)` (`:954-956`).
+  - On restore the slab decays by `exp(−downtime/tau)` (`:964`).
 - **Err EWMA:** weight 0.05, seeded with the first squared residual (`:190`).
 - **Forecast, hold duty, valve plan, planner:** as `adaptive_pid_heating.py:252-293`.
   - Candidates are {0} ∪ [min_on, cycle].
@@ -56,27 +58,29 @@ The numbers are v5's. "(a)-(e)" are the heating session's fix-round items, and t
   - EWMA 0.05 seeded with the first sample, for `mae60/120` and `persistence_mae60/120` (persistence = |T_now − T_snapshot|);
   - `n120_independent` counts only 120-min windows starting ≥120 min after the last counted one;
   - the history is 135 minutes, in memory only.
-- **Gate (`:719-737`), with (b), (c) and (d):**
+- **Gate (`:724-742`), with (b), (c) and (d):**
   - **Promote** when all of these hold:
     - `n120_independent >= min_validations` (48);
     - `model.blocks >= 672`;
     - `alpha_rel_sd <= 0.25`, where alpha_rel_sd = `sqrt(err·P00)/alpha` (`:203-205`);
     - `mae120 <= mae_on` (0.3);
-    - `mae120 <= 0.7 · persistence_mae120`.
+    - `mae120 <= 0.7 · persistence_mae120 + 1e-12` (the tolerance keeps .28 <= .7·.4 from failing on binary rounding).
   - **Demote** when `mae120 > mae_off` (0.45) or `mae120 > persistence_mae120`.
-  - The `auto | off | on` setting works as in v5.
-- **(a) Cold-room floor:** in predictive mode, T < sp − 0.5 means the full cycle now, and demotion to the fallback for 24 h (`:634-641`).
+  - The `auto | off | on` setting works as in v5, except that an active 24 h demotion also overrides a forced `on`, including after a reload (`:729-731`; results ruling "Cold-floor lockout also applies to forced `on`").
+- **(a) Cold-room floor:** in predictive mode, T < sp − 0.5 while heating is wanted means the full cycle now, and demotion to the fallback for 24 h (`:637-644`). It still yields to a temperature fault and to a valve exercise (`test_cold_floor_still_yields_to_demand_fault_and_exercise`).
 - **Validity of a minute:**
   - a temperature is present;
   - an outdoor value is known (last known is allowed; never invented);
   - no opening is open, and none was in the last 15 min;
   - no valve exercise is running;
   - the AC is off for ≥30 min (`AC_ACTIVE = heat, cool, heat_cool, dry, fan_only, auto`, `:142`);
-  - the tick interval is 1 ± 0.05 min (`:706`).
+  - the tick interval is 1 ± 0.05 min (`:711`).
 - **Frozen fallback while predictive:**
-  - the fallback's integral is frozen and its duty bank is cleared;
-  - its loss learner keeps sampling;
-  - the integral transfer is skipped (results ruling 5).
+  - the fallback's error integration is frozen and its duty bank is cleared;
+  - its loss learner keeps sampling, under the same AC rule as the model: no samples while the AC is active or in its 30-min cooldown (results: "Apply AC validity to the fallback heat-loss learner too");
+  - a completed loss window **does** transfer the integral (`transfer_integral`), so ff + i stays consistent for a later fallback. The final review restored this; the first results file had skipped it (`test_predictive_loss_update_transfers_integral`).
+- **Publication never touches the valve:** a failing sensor publication is caught, logged at most every 600 s, and never changes valve state (`:754-765`; `test_publication_failures_never_flap_valves_and_are_rate_limited`).
+- **Restore details:** the covariance cap also runs on restore; legacy scalar `blocks` migrate to every candidate; accuracy saved without `persistence_mae120` resets the counts, so new paired scores start (`:220-249`, `:347-356`).
 
 ## Design decisions
 
@@ -125,7 +129,7 @@ class PredictiveController:
         # at a cycle boundary: on-minutes for this cycle (predictive: plan_cycle;
         # fallback: PI + DutyBank; no setpoint -> 0)
     def forecasts(self, inp: MinuteInputs, cycle_elapsed: int, on_minutes: int) -> dict[int, float | None]
-        # +30/+60/+120/+180/+240, cached path + analytic correction (v5 :782-821)
+        # +30/+60/+120/+180/+240, cached path + analytic correction (v5 :787-826)
     def to_dict(self) -> dict
     @classmethod
     def from_dict(cls, settings: PredictiveSettings, data: dict, downtime_min: float) -> "PredictiveController"
@@ -139,7 +143,7 @@ The device glue goes in `hvac_device/predictive_heater_device.py`, `class Predic
 - `__init__(..., cycle_duration, settings: PredictiveSettings, store_key: str)` creates `self._ctl = PredictiveController(settings)`.
 - `_compute_duty()` overrides `pwm_heater_device.py:86`. It returns `100 · self._ctl.plan(inputs) / cycle_minutes`. `PwmHeaterController._async_begin_cycle` (`hvac_controller/pwm_controller.py:96`) already calls `compute_duty` at every boundary, and `plan_pwm` turns the duty back into exactly the planned on-seconds, because the candidates match `plan_pwm`'s collapse rule. **No change to the PWM controller's cycle logic.**
 - `async_on_startup` (called from `climate.py:1047`) registers `async_track_time_interval(hass, self._async_minute, timedelta(minutes=1))` with `self.async_on_remove(...)`, and loads the Store (section 3). Since `bfa605a` that callback also fires for a heater inside a `HeaterCoolerDevice`.
-- `_async_minute` builds `MinuteInputs` (section 2) and calls `self._ctl.minute(...)`. When that returns True, it calls a new `PwmHeaterController.async_restart()`. That method is the one addition to `pwm_controller.py`: it clears the timer and runs `_async_begin_cycle` now. Because the PWM loop only plans at boundaries, this is how a cold-room floor or a gate switch takes effect at once (v5 sets `cycle_start = now`, `:640`).
+- `_async_minute` builds `MinuteInputs` (section 2) and calls `self._ctl.minute(...)`. When that returns True, it calls a new `PwmHeaterController.async_restart()`. That method is the one addition to `pwm_controller.py`: it clears the timer and runs `_async_begin_cycle` now. Because the PWM loop only plans at boundaries, this is how a cold-room floor or a gate switch takes effect at once (v5 sets `cycle_start = now`, `:643`).
 - **(mine)** A setpoint change also restarts the cycle. That covers `async_set_temperature`, a preset change and a presence-driven preset, all of which reach the device through `climate._async_control_climate(force=True)`. `async_control_hvac(force=True)` calls `async_restart()` when `force` is set and the setpoint differs from the one planned. The user sees the change act at once instead of up to 30 min later. v5 replans only at boundaries because AppDaemon never saw a setpoint UI.
 
 Factory wiring: `hvac_device_factory.py:355` (`_create_heater_device`) gains a `HeaterControlMode.PREDICTIVE` branch beside the AI branch at `:362`. `const.py:236` (`HeaterControlMode`) gains `PREDICTIVE = "predictive"`. `HVACDeviceFactory(hass, config, feature_manager)` is built at `climate.py:522`; it receives `store_key` (the climate's `sensor_key`: entry_id, CONF_UNIQUE_ID or name, per `const.py:166-168`) through a new keyword argument.
@@ -153,14 +157,14 @@ Factory wiring: `hvac_device_factory.py:355` (`_create_heater_device`) gains a `
   - `is_cold_or_hot` (`:86`) likewise picks HEATER only while the heater switch is on.
   - **Change (mine):** when `self.heater_device` is a `PredictiveHeaterDevice`, `async_heater_cooler_toggle` (`:156`) calls `heater_device.async_control_hvac` on every pass unless `too_hot` selected the cooler. The cooler logic is unchanged.
   - This also fixes, for predictive, the existing AI/TPI inconsistency in heat_cool: `turn_off_all` switches the heater off mid-segment and the PWM loop switches it back on at the next boundary. Seen in the code, not live; logged as a ledger item for AI/TPI.
-- **Openings:** inherited from `PwmHeaterDevice.async_control_hvac` (`pwm_heater_device.py:93`): an open window cancels the PWM and switches off. The minute is invalid while open and for 15 min after close. The tracker's pending windows are invalidated (`:563-566`).
+- **Openings:** inherited from `PwmHeaterDevice.async_control_hvac` (`pwm_heater_device.py:93`): an open window cancels the PWM and switches off. The minute is invalid while open and for 15 min after close. The tracker's pending windows are invalidated (`:564-567`).
 - **Floor protection:** inherited. Floor hot means off; floor cold means forced on, which still counts as valve-on for the slab. The minute stays valid, because the valve state is real.
 - **min_cycle_duration:** becomes `min_on = min_off` in whole minutes (section 1). Validation in the schema: `pwm_cycle_duration` is a multiple of 60, and `3 · min_cycle_duration <= pwm_cycle_duration` **(mine)**, so the candidate set is non-empty.
 - **Keep-alive and the 60 s poll** (`climate.py:954-973`): they only call `async_control_hvac`, whose enforcement since `2be8bef` keeps the switch on plan. The minute tick is the device's own and does not depend on `min_cycle_duration` being set.
 - **hvac_power:** untouched. `PwmHeaterDevice.async_control_hvac` never calls `hvac_power.update_hvac_power`, unlike `GenericHVACDevice` (`generic_hvac_device.py:234`). Predictive keeps that.
 - **Valve maintenance:**
   - `climate._set_valve_maintenance_active` (`climate.py:1948`) also calls `self._find_pwm_heater().set_maintenance(active)` when it is a `PredictiveHeaterDevice` (`_find_pwm_heater` is at `climate.py:1307`).
-  - While active, minutes are invalid and the tracker is invalidated (v5 `:864`).
+  - While active, minutes are invalid and the tracker is invalidated (v5 `:869`).
   - Since the heater is the real valve after cut-over, the thermostat's own Sunday maintenance replaces AppDaemon's exercise.
 - **Temperature fault** (cur_temp None after a valid reading, or `_sensor_stalled`, `climate.py:695`):
   - Fallback PI: feed-forward only, as v4.
@@ -178,9 +182,9 @@ Factory wiring: `hvac_device_factory.py:355` (`_create_heater_device`) gains a `
   - `from_dict(..., downtime_min = now − saved_at)` decays each slab by `exp(−downtime/tau)` (fix-round (e)).
   - The tracker history is not stored, so 60-min scores resume after 60 min and 120-min scores after 120 (results ruling 10).
   - The gate mode is restored when `gate == auto`.
-  - Invalid or non-finite data means a fresh start with a WARNING, as at `adaptive_pid_heating.py:968-969`.
+  - Invalid or non-finite data means a fresh start with a WARNING, as at `adaptive_pid_heating.py:979`. `RoomModel.from_dict` caps the covariance on load, as v5 does.
 - **Migration from AppDaemon:**
-  - A new service `dual_smart_thermostat.import_predictive_state`, with fields `entity_id`, `path` and `room`. It reads the v5 state file (`"version": 5`, `rooms.<room>` as written by `save_state`, `adaptive_pid_heating.py:894-903`) in an executor job, and refuses a path that `hass.config.is_allowed_path` rejects.
+  - A new service `dual_smart_thermostat.import_predictive_state`, with fields `entity_id`, `path` and `room`. It reads the v5 state file (`"version": 5`, `rooms.<room>` as written by `save_state`, `adaptive_pid_heating.py:902-911`) in an executor job, and refuses a path that `hass.config.is_allowed_path` rejects.
   - It calls `from_appdaemon_room`, which maps slab, theta, P, err and blocks per tau, the tracker scores, `mode` ("pi" becomes "fallback"), `demoted_until`, `k_loss`, `integral` and `k_updates`. The downtime runs from `model_saved_at`.
   - It saves the Store and restarts the cycle.
   - Unverified: whether HA core can read `/addon_configs/...`, where the AppDaemon file lives. The cut-over (section 8) copies the file into `/config/` over Samba first, so it does not depend on that.
@@ -196,7 +200,7 @@ Factory wiring: `hvac_device_factory.py:355` (`_create_heater_device`) gains a `
 - **Entities (mine): sensor entities, not attributes,** so the recorder keeps history and long-term statistics.
   - They are created by `sensor.py` only when `heater_control_mode == predictive`, as `EntityCategory.DIAGNOSTIC` entities with `unique_id = f"{sensor_key}_predictive_{key}"`.
   - Each listens to a dispatcher signal `SET_PREDICTIVE_SENSOR_SIGNAL.format(sensor_key)`, the same pattern as `HvacActionReasonSensor` (`sensor.py`, `SET_HVAC_ACTION_REASON_SENSOR_SIGNAL` at `const.py:169`).
-  - The device sends one dict per minute.
+  - The device sends one dict per minute, after the valve decision. The send is wrapped so that a sensor failure is logged (at most every 600 s) and never reaches the PWM loop, matching v5's publication isolation.
   - The keys are:
     - `forecast_30`, `forecast_60`, `forecast_120`, `forecast_180`, `forecast_240`: °C, temperature device class, measurement state class;
     - `mae_60`, `mae_120`, `persistence_mae_120`: °C, measurement;
@@ -211,7 +215,7 @@ Factory wiring: `hvac_device_factory.py:355` (`_create_heater_device`) gains a `
 
 - The cooler device of a `*_combined_ac` thermostat is the Gree AC (a `WrappedClimateDevice`, `hvac_device_factory.py:299-330`). So there is **no `ac_entity` key**: the device reads its sibling's wrapped-entity state, `cooler_device._entity_state.state` in AC_ACTIVE.
   - `HeaterCoolerDevice` passes `cooler_device` to the heater at construction: a new `set_sibling_cooler(device)` called in `heater_cooler_device.py:__init__`.
-  - Minutes are invalid while the AC is active and for 30 min after (v5 `:572-579`). The tracker is invalidated.
+  - Minutes are invalid while the AC is active and for 30 min after (v5 `:573-580`). The tracker is invalidated.
 - The AC running does not stop predictive heating, as in v5. In heat_cool the heater's target is `target_temp_low`, so the planner only fights the AC if the band is narrow. That is a configuration matter.
 - **No heat-then-cool interlock** (owner, 2026-10-17). The cooler logic in `HeaterCoolerDevice` is unchanged; see "Ideas".
 
@@ -239,28 +243,43 @@ Pure tests port the v5 suites one to one; they use pytest functions with no hass
   - `test_overshoot_cost_weight_is_three`;
   - `test_first_thirty_minutes_have_weight_point_two`;
   - `test_planner_ties_choose_smallest_and_candidates_respect_minimum`;
-  - `test_tracker_seeds_ewmas_and_counts_nonoverlapping_windows`.
+  - `test_tracker_seeds_ewmas_and_counts_nonoverlapping_windows`;
+  - `test_tracker_uses_room_counter_at_half_minute_jitter`.
 
-  Plus new: `test_planner_candidates_respect_min_off` (section 1). The 14-day histories in two tests are kept (results ruling 2).
+  Plus new: `test_planner_candidates_respect_min_off` (section 1). `test_rls_recovers_known_params` and `test_room_model_picks_true_tau` use **21-day** histories: with the covariance cap, identification needs 21 days (`.tests/test_model.py:37-38, 66-67` at `c761462`).
 - `tests/unit/test_predictive_controller.py` gets the gate, floor and persistence tests from `.tests/test_v5_review.py` and `.tests/test_app.py`, retargeted at `PredictiveController`:
   - `test_cold_floor_forces_cycle_and_demotes_for_24h`;
+  - `test_cold_floor_still_yields_to_demand_fault_and_exercise`;
+  - `test_forced_on_cannot_undo_cold_floor_demotion_after_reload`;
   - `test_gate_requires_skill_against_persistence`;
   - `test_gate_requires_independent_windows_and_seven_days`;
   - `test_gate_checks_alpha_uncertainty`;
   - `test_gate_absolute_mae_from_known_forecast_error`;
   - `test_gate_requires_validations_and_accuracy`;
-  - `test_restart_ages_slab`;
+  - `test_restart_ages_slab_and_first_step_uses_elapsed_time`;
   - `test_round_trip`;
   - `test_appdaemon_v5_room_imports`, which uses a fixture copied from a real v5 state file's room;
   - `test_v4_file_refused`;
   - `test_predictive_freezes_unsaturated_integral`;
-  - `test_predictive_loss_update_skips_integral_transfer`;
+  - `test_predictive_loss_update_transfers_integral`;
+  - `test_ac_cooldown_excludes_model_and_loss_learner`;
+  - `test_legacy_scalar_blocks_and_unpaired_accuracy_migrate`;
   - `test_predictive_without_outdoor_uses_fallback`.
 - `tests/unit/test_predictive_closed_loop.py` ports `.tests/test_closed_loop.py`, driving `PredictiveController` plus `plan_pwm` minute by minute against the same plant (`plant_step` from `.tests/test_model.py`, readings rounded to 0.1 °C):
   - `test_predictive_closed_loop_limits`: overshoot ≤ 0.3, MAE over the last 24 h ≤ 0.2, max hot run < 240;
   - `test_predictive_tracks_better_than_pi`: predictive MAE over the last 24 h < PI's, and max overshoot ≤ 0.3. This replaces v5's strict "beats PI on overshoot" expected failure, as the v5 fix round did (heating session, 2026-10-17: PI never overshoots that simulated plant);
-  - `test_predictive_auto_with_solar_mismatch_never_cold`: 10 days, sinusoidal outdoor, solar gain 10:00-16:00, noise σ 0.05, seed 42. Zero minutes below sp − 0.7, min T ≥ 20.3.
-  - In the fork, demand comes from the hvac mode, not from v5's `switch.d` hysteresis (`test_closed_loop.py:42-46`). The solar test therefore keeps the room in HEAT mode throughout, and asserts the same limits **(mine; a deviation from the source test, logged here)**.
+  - `test_predictive_auto_not_colder_than_pi_with_solar_mismatch`, as v5's final test (`.tests/test_closed_loop.py` at `c761462`):
+    - 10 days; theta (0.03, 0.0015, 0), tau 120;
+    - outdoor 8 + 5·sin(2πt/1440);
+    - solar gain 0.01·sin(π(minute_of_day − 600)/360) from 10:00 to 16:00;
+    - noise σ 0.05, seed 42, readings rounded to 0.1 °C; start T 21, S 0.8;
+    - feasibility guard: assert alpha/beta + min outdoor ≥ sp + 1.
+    - The acceptance is **relative**, as the owner ruled for v5: auto minutes below sp − 0.3 and below sp − 0.7 are each ≤ PI's + 60; auto min T ≥ PI's − 0.1; auto overshoot ≤ PI's + 0.3.
+    - Absolute cold time under strong unmodelled solar gain is an open problem shared by PI and predictive (results file, "Open"). It is not a requirement here.
+  - **Demand in the solar fixture needs an owner decision.** v5's passing run gates demand with a hysteresis on the reading (on below 20.7, off at ≥ 21, `test_closed_loop.py:48-52` at `c761462`). That stands for a bang_bang thermostat driving AppDaemon's demand switch. In the port there is no demand switch: predictive and its PI fallback heat continuously while the hvac mode is HEAT. So the faithful fixture is "demand always on".
+    - v5's own always-on diagnostic (results file, second solar table) has auto **failing** the relative margin: 2228 vs PI's 2124 + 60 minutes below sp − 0.7, and 4080 vs 3999 + 60 below sp − 0.3. Min T and overshoot pass.
+    - Those numbers come from the results file; I did not run them. The port runs the same logic, so the same result is expected.
+    - The plan ports both fixtures. The gated one is a port-equivalence test that must pass. The always-on one is the acceptance whose margin the owner rules on (see "Decision log").
 
 HA-level tests use the real `hass` fixture and freezer, following `tests/features/test_ai_heating.py`; they go in `tests/features/test_predictive_heating.py`:
 - `test_predictive_mode_creates_device`;
@@ -312,7 +331,7 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
 **Per room. The pilot is the bathroom** (owner, 2026-10-17): `climate.bathroom_dual`, a simple heater, valve `switch.upstairs_bathroom_heating`, AppDaemon room `bathroom`. The other six follow only after the pilot is verified.
 1. **Take the room out of AppDaemon.**
    - Remove `rooms.<room>` from `apps.yaml` in the AppDaemon repo, push, and pull in the deployed folder. This is the heating session's deploy path (memory `ha-heating-appdaemon`).
-   - AppDaemon's `terminate()` closes all enabled valves on the app reload (`adaptive_pid_heating.py:501-512`). The other rooms re-initialise from the state file.
+   - AppDaemon's `terminate()` closes all enabled valves on the app reload (`adaptive_pid_heating.py:502-513`). The other rooms re-initialise from the state file.
 2. **Reconfigure the thermostat** through its reconfigure flow:
    - heater = the valve in the table;
    - `heater_control_mode` = predictive, `pwm_cycle_duration` 1800 s, `min_cycle_duration` 600 s;
@@ -356,7 +375,12 @@ Today, each of the 7 thermostats is a bang_bang heater on `switch.pid_<room>_dem
   - The fallback is a port of v4's PI with heat-loss feed-forward.
   - No heat-then-cool interlock.
   - The pilot room is the bathroom (`climate.bathroom_dual`).
-  - The strict "predictive beats PI on overshoot" criterion is replaced by the v5 fix round's "MAE last 24 h < PI's and overshoot ≤ 0.3", plus the solar-mismatch never-cold test.
+  - The strict "predictive beats PI on overshoot" criterion is replaced by the v5 fix round's "MAE last 24 h < PI's and overshoot ≤ 0.3".
+  - v5's solar acceptance is relative to PI (owner ruling recorded in the v5 results file); absolute solar cold time is an open problem shared with PI.
+- **Open, owner:** the solar acceptance fixture for the port (section 7). Choices:
+  - (a) accept always-on demand with the v5 relative margin, which v5's diagnostic says fails (+104 and +81 min over PI);
+  - (b) widen the margin for the always-on fixture;
+  - (c) keep only the gated fixture as acceptance, and treat always-on cold time as part of the open solar problem.
 
 ## Ideas (later, owner's choice)
 
