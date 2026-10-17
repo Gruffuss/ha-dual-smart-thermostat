@@ -75,3 +75,44 @@ Implementation commits before this final validation commit:
 Relayed update handled: the pure minimum-off fix was merged when requested. No unrelated relayed message was received.
 
 Left out as scoped: live HA operations, release/push, the pure solar investigation, and changes to AI/TPI heat-cool behavior. Windows verification was used as requested; Docker verification remains a release prerequisite.
+
+Task 3 review fix round (2026-10-17)
+
+Implemented in `37e3f73`:
+
+- HIGH 2: unselected composite subtrees clear predictive demand, and the predictive mode setter cancels its independent PWM timer. HA tests cover heater + fan, heater + dryer, and heater-cooler + dryer, including 61 minutes without later valve-on calls and a return to heating.
+- MEDIUM 4: shared PWM stop checks actual actuator activity before returning early. A cancelled cycle cannot leave a forced-on valve running. Tests cover floor protection followed by OFF in predictive, AI, and TPI, plus cooler selection after cancellation.
+- MEDIUM 5: removal closes the valve once, then saves; the existing awaited shutdown makes this apply to reload/unload too. The removal test requires exactly one turn_off and no later calls. Shared PWM catches duty-computation errors, logs them, runs a zero-duty cycle and retries at the next boundary.
+- MEDIUM 6: Store load failures warn and start fresh, while still registering minute processing. Tests exercise OSError and UnsupportedStorageVersionError.
+- LOW/MEDIUM 8: learning uses is_active, correctly recognizing valve entities reporting open.
+
+Verification:
+
+- Fail-first run: 11 failed, 31 deselected, exit 1; each assertion reproduced the corresponding review defect before implementation. The unsupported-version variant was added afterward to extend read-error coverage.
+- Predictive HA file: all 43 cases pass in the final targeted/full runs (32 original cases plus 11 additional parameterized cases).
+- Predictive + dual-mode + fan-mode targeted run: 444 passed, exit 0.
+- Final full suite: 1806 passed, 2 skipped, 1 failed, 11 warnings, exit 1, 50.53 seconds.
+- Exact failure list: tests/unit/test_predictive_closed_loop.py::test_predictive_auto_not_colder_than_pi_with_solar_mismatch.
+- The known assertion remains 1307 <= 1235 + 60; no other failure remains.
+- uvx black --check and uvx flake8 --config setup.cfg pass on all five changed Python files (exit 0 for each).
+- git diff --cached --check passes, and the staged changes were reviewed before committing.
+
+Scope and implementation adjustments:
+
+- The new shared PWM constructor callback reads actuator activity without relying on PWM timer state. It is an HA controller change, not a change under control/.
+- OFF propagation is deliberately limited to predictive descendants: a first broad implementation broke 31 legacy heat-cool/fan tests, because those paths retain separate child modes. Narrowing propagation restored every one of those tests without changing their assertions.
+- No new entity unique IDs are introduced; the 15 IDs documented above are unchanged.
+- No control/*.py or tests/unit/test_predictive_*.py files were edited; no pure API change was requested. No new pure-branch merge instruction arrived during this fix round.
+- No push and no live Home Assistant changes were made.
+
+Defects observed in this round, one per line:
+
+- Predictive timers retained heating demand in FAN_ONLY/DRY composites; fixed.
+- Shared PWM stop left an externally forced-on valve active after cancellation; fixed for predictive, AI and TPI.
+- Predictive removal did not close the valve; fixed.
+- A duty-computation exception could stop the PWM chain while leaving the valve on; fixed.
+- A Store read/version exception prevented startup from registering minute processing; fixed.
+- Valve-domain open states were recorded as off for learning; fixed.
+- Broad OFF propagation in the first fix attempt broke legacy heat-cool/fan selection; corrected before the implementation commit.
+- Existing options/preset tests still emit 11 unawaited AsyncMock warnings at options_flow.py:730; unchanged.
+- The known always-on solar acceptance failure remains assigned to the pure-code builder; unchanged.
