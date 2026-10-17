@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cache
 import math
 import random
 
@@ -17,7 +17,7 @@ from tests.unit.test_predictive_controller import Driver
 from tests.unit.test_predictive_model import plant_step
 
 
-@lru_cache(maxsize=None)
+@cache
 def simulate(
     mode,
     solar=False,
@@ -141,7 +141,7 @@ def assert_solar_margin(pi, predictive):
 
 # The v5-equivalence runs keep v5's actuator (no minimum off) and v5's gate,
 # which also demotes when mae120 exceeds persistence_mae120.
-V5 = dict(min_off_minutes=0, persistence_demotion=True)
+V5 = {"min_off_minutes": 0, "persistence_demotion": True}
 
 
 def test_predictive_auto_not_colder_than_pi_with_solar_mismatch_gated():

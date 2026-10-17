@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import itertools
 import json
 import math
 from unittest.mock import patch
@@ -513,7 +514,7 @@ def test_controller_tracker_uses_room_counter_at_half_minute_jitter():
     for now in (0.5, 1.5, 2.5, 3.5):
         ctl.minute(inputs(now))
     indices = [row[0] for row in ctl.tracker.history]
-    assert [b - a for a, b in zip(indices, indices[1:])] == [1, 1, 1]
+    assert [b - a for a, b in itertools.pairwise(indices)] == [1, 1, 1]
 
 
 def test_setpoint_restart_between_ticks_uses_new_input_without_integrating_twice():

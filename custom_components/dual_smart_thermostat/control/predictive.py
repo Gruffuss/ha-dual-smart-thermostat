@@ -13,7 +13,7 @@ current readings, whatever its now_min.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import logging
 import math
 
@@ -129,14 +129,16 @@ class PredictiveController:
         )
         if cooling_down or settings.gate == "off":
             mode = "fallback"
-        elif settings.gate == "on":
-            mode = "predictive"
-        elif self.mode == "fallback" and (
-            tracker.n120_independent >= settings.min_validations
-            and model.blocks >= settings.min_blocks
-            and model.alpha_rel_sd() <= 0.25
-            and tracker.mae120 <= settings.mae_on
-            and tracker.mae120 <= 0.7 * tracker.persistence_mae120 + 1e-12
+        elif (
+            settings.gate == "on"
+            or self.mode == "fallback"
+            and (
+                tracker.n120_independent >= settings.min_validations
+                and model.blocks >= settings.min_blocks
+                and model.alpha_rel_sd() <= 0.25
+                and tracker.mae120 <= settings.mae_on
+                and tracker.mae120 <= 0.7 * tracker.persistence_mae120 + 1e-12
+            )
         ):
             mode = "predictive"
         elif self.mode == "predictive" and (
@@ -342,7 +344,7 @@ class PredictiveController:
         return on
 
     def forecasts(
-        self, inp: MinuteInputs, cycle_elapsed: int, on_minutes: int
+        self, inp: MinuteInputs, cycle_elapsed: float, on_minutes: int
     ) -> dict[int, float | None]:
         """Cached v5 paths with exact linear T, S and outdoor corrections."""
         horizons = (30, 60, 120, 180, 240)
@@ -375,13 +377,13 @@ class PredictiveController:
             for valve in plan:
                 slab += (valve - slab) / model.tau
                 slabs.append(slab)
-            cache = dict(
-                key=key,
-                time=inp.now_min,
-                temps=[inp.temp, *path],
-                slabs=slabs,
-                outdoor=inp.outdoor,
-            )
+            cache = {
+                "key": key,
+                "time": inp.now_min,
+                "temps": [inp.temp, *path],
+                "slabs": slabs,
+                "outdoor": inp.outdoor,
+            }
             self._forecast_cache = cache
             age = 0
         index = round(age)
@@ -406,7 +408,7 @@ class PredictiveController:
 
     def to_dict(self) -> dict:
         """Persist learned state; pending windows and running pulses are transient."""
-        saved = datetime.now(timezone.utc)
+        saved = datetime.now(UTC)
         until = None
         if self.demoted_until_min is not None:
             until = saved + timedelta(minutes=self.demoted_until_min - self._now_min)

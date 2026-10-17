@@ -74,7 +74,7 @@ class SlabRLS:
         ]
         self._bound_covariance()
         self.err = (
-            (0.95 * self.err + 0.05 * residual**2) if self.blocks else residual**2
+            (0.95 * self.err + 0.05 * residual**2) if self.blocks else residual ** 2
         )
         self.blocks += 1
         self.reset()

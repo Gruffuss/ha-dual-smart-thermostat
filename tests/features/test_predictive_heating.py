@@ -359,11 +359,13 @@ async def test_import_predictive_state_service(hass, freezer, tmp_path, hass_sto
     path.write_text(json.dumps({"version": 5, "rooms": {"test": room}}))
     data = {"entity_id": "climate.test", "path": str(path), "room": "test"}
     assert hass.services.has_service(DOMAIN, "import_predictive_state")
-    with patch.object(type(hass.config), "is_allowed_path", return_value=False):
-        with pytest.raises(HomeAssistantError, match="allowed"):
-            await hass.services.async_call(
-                DOMAIN, "import_predictive_state", data, blocking=True
-            )
+    with (
+        patch.object(type(hass.config), "is_allowed_path", return_value=False),
+        pytest.raises(HomeAssistantError, match="allowed"),
+    ):
+        await hass.services.async_call(
+            DOMAIN, "import_predictive_state", data, blocking=True
+        )
     hass.config.allowlist_external_dirs.add(str(tmp_path))
     await hass.services.async_call(
         DOMAIN, "import_predictive_state", data, blocking=True

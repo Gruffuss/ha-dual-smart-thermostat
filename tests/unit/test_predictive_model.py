@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 from unittest.mock import patch
@@ -247,7 +248,7 @@ def test_tracker_uses_room_counter_at_half_minute_jitter():
     for counter, now in enumerate((0.5, 1.5, 2.5, 3.5)):
         tracker.record(counter, 20, False, 5, True)
     indices = [row[0] for row in tracker.history]
-    assert [b - a for a, b in zip(indices, indices[1:])] == [1, 1, 1]
+    assert [b - a for a, b in itertools.pairwise(indices)] == [1, 1, 1]
 
 
 def test_planner_candidates_respect_min_off():

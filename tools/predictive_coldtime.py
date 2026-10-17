@@ -20,14 +20,12 @@ Results: docs/plans/2026-10-17-predictive-heater-mode-results.md.
 
 from __future__ import annotations
 
+import itertools
 import math
 import random
 import sys
 
-from custom_components.dual_smart_thermostat.control import (
-    predictive,
-    predictive_model,
-)
+from custom_components.dual_smart_thermostat.control import predictive, predictive_model
 from custom_components.dual_smart_thermostat.control.predictive import (
     MinuteInputs,
     PredictiveController,
@@ -73,16 +71,16 @@ def simulate(mode, seed=42, **settings):
         if 600 <= time_of_day <= 960:
             temp += 0.01 * math.sin(math.pi * (time_of_day - 600) / 360)
         temperatures.append(temp)
-    return dict(
-        ctl=ctl,
-        temps=temperatures,
-        valves=valves,
-        transitions=transitions,
-        below_03=sum(t < SETPOINT - 0.3 for t in temperatures),
-        below_07=sum(t < SETPOINT - 0.7 for t in temperatures),
-        min_temp=min(temperatures),
-        overshoot=max(0, max(temperatures) - SETPOINT),
-    )
+    return {
+        "ctl": ctl,
+        "temps": temperatures,
+        "valves": valves,
+        "transitions": transitions,
+        "below_03": sum(t < SETPOINT - 0.3 for t in temperatures),
+        "below_07": sum(t < SETPOINT - 0.7 for t in temperatures),
+        "min_temp": min(temperatures),
+        "overshoot": max(0, max(temperatures) - SETPOINT),
+    }
 
 
 def margin_ok(pi, auto):
@@ -125,7 +123,7 @@ def report(pi, auto):
         "segment            mode         PI<20.7 auto<20.7  PI<20.3 auto<20.3  on PI/auto"
     )
     modes = ["fallback", *(mode for _, mode, *_ in auto["transitions"])]
-    for (start, end), mode in zip(zip(edges, edges[1:]), modes):
+    for (start, end), mode in zip(itertools.pairwise(edges), modes):
         row = [
             sum(t < limit for t in run["temps"][start:end])
             for limit in (20.7, 20.3)
@@ -453,11 +451,11 @@ def integrate_while_predictive():
 
 # Variants that only change controller settings, applied to PI and auto alike.
 SETTINGS = {
-    "c2_k_oracle": dict(k_loss=100 * THETA[1] / THETA[0]),
-    "c3_kp_40": dict(kp=40.0),
-    "c3_kp_100": dict(kp=100.0),
-    "c3_ki_0025": dict(ki=0.025),
-    "c3_ki_01": dict(ki=0.1),
+    "c2_k_oracle": {"k_loss": 100 * THETA[1] / THETA[0]},
+    "c3_kp_40": {"kp": 40.0},
+    "c3_kp_100": {"kp": 100.0},
+    "c3_ki_0025": {"ki": 0.025},
+    "c3_ki_01": {"ki": 0.1},
 }
 
 VARIANTS = {
@@ -522,7 +520,7 @@ def segment_differences(pi, auto):
     transitions = auto["transitions"]
     edges = [minute for minute, *_ in transitions] + [len(auto["temps"])]
     result = {"predictive": [0, 0], "fallback": [0, 0]}
-    for (start, end), (_, mode, *_) in zip(zip(edges, edges[1:]), transitions):
+    for (start, end), (_, mode, *_) in zip(itertools.pairwise(edges), transitions):
         for index, limit in enumerate((SETPOINT - 0.3, SETPOINT - 0.7)):
             result[mode][index] += sum(
                 t < limit for t in auto["temps"][start:end]
