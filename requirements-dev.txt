@@ -8,13 +8,15 @@ pytest-cov>=7.1.0
 # (==1.4.0 as of 0.13.348), so the exact version is always delivered
 # transitively; this floor just documents the 0.x -> 1.x major.
 pytest-asyncio>=1.4.0
-# Code formatting and linting
+# Code formatting and linting. Keep these pins equal to the revs in
+# .pre-commit-config.yaml so ./scripts/docker-lint and pre-commit agree.
 pre-commit
-isort
-black
-codespell
+isort==9.0.2
+black==26.10.1
+codespell==2.4.3
 mypy
-ruff>=0.16.1
+# ruff's default rule set changes between versions; bump deliberately.
+ruff==0.17.1
 colorlog
 # Security and quality tools
 safety
@@ -23,6 +25,6 @@ semgrep
 pip-audit
 radon
 xenon
-flake8
+flake8==7.4.1
 # Security-related HTTP dependencies are managed by Home Assistant
 # to ensure compatibility with its core requirements
