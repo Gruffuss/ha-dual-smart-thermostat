@@ -43,12 +43,20 @@ class Driver:
 
     def tick(self, inp):
         inp = replace(inp, valve_on=self.valve)
+        settings = self.ctl.settings
+        cycle = settings.cycle_minutes
         restart = self.ctl.minute(inp)
         elapsed = inp.now_min - self.start if self.start is not None else None
-        if restart or elapsed is None or elapsed < 0 or elapsed + 0.05 >= 30:
+        if restart or elapsed is None or elapsed < 0 or elapsed + 0.05 >= cycle:
             on = self.ctl.plan(inp)
-            pwm = plan_pwm(100 * on / 30, 1800, 600)
+            # plan_pwm cannot express different on/off minima. Keep its raw
+            # durations, then apply the same collapse rule to each side.
+            pwm = plan_pwm(100 * on / cycle, 60 * cycle)
             self.on = pwm.on_seconds / 60
+            if 0 < pwm.on_seconds < 60 * settings.min_on_minutes:
+                self.on = 0
+            elif 0 < pwm.off_seconds < 60 * settings.min_off_minutes:
+                self.on = cycle
             self.start = inp.now_min
         self.valve = (
             inp.demand
@@ -68,6 +76,37 @@ def ready_gate():
         model.blocks = 672
         model.err = 0.000001
     return ctl
+
+
+@pytest.mark.parametrize("minimum, expected", [(None, 10), (0, 0), (5, 5)])
+def test_minimum_off_defaults_to_minimum_on(minimum, expected):
+    assert (
+        PredictiveSettings(30, 10, min_off_minutes=minimum).min_off_minutes == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "minimum, expected_on", [(None, 30), (0, 25), (5, 25), (6, 30)]
+)
+def test_driver_and_loss_learner_respect_asymmetric_minimum_off(minimum, expected_on):
+    ctl = controller(
+        "off", kp=0, ki=0, k_loss=100 * 25 / 30 / 24, min_off_minutes=minimum
+    )
+    driver = Driver(ctl)
+    delivered = sum(driver.tick(inputs(minute, temp=24)) for minute in range(30))
+    assert delivered == expected_on
+    assert ctl.learner.valve_on_count == expected_on
+
+
+@pytest.mark.parametrize("minimum", [0, 5])
+def test_asymmetric_minimum_off_preserves_minimum_on(minimum):
+    ctl = controller(
+        "off", kp=0, ki=0, k_loss=100 * 5 / 30 / 24, min_off_minutes=minimum
+    )
+    driver = Driver(ctl)
+    assert not driver.tick(inputs(temp=24))
+    assert driver.on == 0
+    assert ctl.bank.bank == pytest.approx(5)
 
 
 def test_cold_floor_forces_cycle_and_demotes_for_24h():

@@ -49,6 +49,12 @@ class PredictiveSettings:
     kp: float = 65.0
     ki: float = 0.05
     k_loss: float = 2.0
+    min_off_minutes: int | None = None
+
+    def __post_init__(self) -> None:
+        """Production protects both segments; zero reproduces the v5 actuator."""
+        if self.min_off_minutes is None:
+            self.min_off_minutes = self.min_on_minutes
 
 
 @dataclass
@@ -256,9 +262,15 @@ class PredictiveController:
         pwm = plan_pwm(
             100 * self._on_minutes / self.bank.cycle_time,
             60 * self.bank.cycle_time,
-            60 * self.bank.min_on_time,
         )
-        valve = elapsed + 0.05 < pwm.on_seconds / 60
+        # plan_pwm has one symmetric minimum. Apply the two sides separately
+        # so loss learning counts the same actuator command as the device.
+        on_seconds = pwm.on_seconds
+        if 0 < on_seconds < 60 * self.bank.min_on_time:
+            on_seconds = 0
+        elif 0 < pwm.off_seconds < 60 * self.settings.min_off_minutes:
+            on_seconds = 60 * self.bank.cycle_time
+        valve = elapsed + 0.05 < on_seconds / 60
         update = self.learner.sample(
             True, self._setpoint, inp.temp, finite_float(inp.outdoor), valve
         )
@@ -289,7 +301,7 @@ class PredictiveController:
                 model.tau,
                 self.bank.cycle_time,
                 self.bank.min_on_time,
-                min_off=self.bank.min_on_time,
+                min_off=self.settings.min_off_minutes,
             )
             self.pi.freeze_output(100 * on / self.bank.cycle_time)
         else:

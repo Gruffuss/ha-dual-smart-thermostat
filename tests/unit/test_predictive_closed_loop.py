@@ -6,6 +6,8 @@ from functools import lru_cache
 import math
 import random
 
+import pytest
+
 from custom_components.dual_smart_thermostat.control.predictive import (
     MinuteInputs,
     PredictiveController,
@@ -16,13 +18,15 @@ from tests.unit.test_predictive_model import plant_step
 
 
 @lru_cache(maxsize=None)
-def simulate(mode, solar=False, gated=False):
+def simulate(mode, solar=False, gated=False, min_off_minutes=None):
     theta = (0.03, 0.0015, 0)
     solar_outdoor_mean, solar_outdoor_amplitude = 8, 5
     if solar:
         min_outdoor = solar_outdoor_mean - solar_outdoor_amplitude
         assert theta[0] / theta[1] + min_outdoor >= 21 + 1
-    ctl = PredictiveController(PredictiveSettings(30, 10, gate=mode))
+    ctl = PredictiveController(
+        PredictiveSettings(30, 10, gate=mode, min_off_minutes=min_off_minutes)
+    )
     driver = Driver(ctl)
     temp, slab = (21, 0.8) if solar else (18, 0)
     on_minutes = hot_run = max_hot_run = 0
@@ -78,7 +82,10 @@ def simulate(mode, solar=False, gated=False):
         "demotions_minute": demotions,
         "transitions": transitions,
     }
-    print(f"\nCLOSED_LOOP mode={mode} solar={solar} gated={gated} {result}")
+    print(
+        f"\nCLOSED_LOOP mode={mode} solar={solar} gated={gated} "
+        f"min_off={ctl.settings.min_off_minutes} {result}"
+    )
     return result
 
 
@@ -109,10 +116,32 @@ def assert_solar_margin(pi, predictive):
 
 
 def test_predictive_auto_not_colder_than_pi_with_solar_mismatch_gated():
-    assert_solar_margin(
-        simulate("off", solar=True, gated=True),
-        simulate("auto", solar=True, gated=True),
-    )
+    pi = simulate("off", solar=True, gated=True, min_off_minutes=0)
+    predictive = simulate("auto", solar=True, gated=True, min_off_minutes=0)
+    assert_solar_margin(pi, predictive)
+    assert_v5_measurements(pi, 3288, 7866, 19.649872839, 0.281292166)
+    assert_v5_measurements(predictive, 3175, 7752, 19.673562927, 0.281292166)
+    assert pi["promotions_minute"] == pi["demotions_minute"] == []
+    assert predictive["promotions_minute"] == [10080]
+    assert predictive["demotions_minute"] == [10905]
+
+
+def assert_v5_measurements(result, below_07, below_03, min_temp, overshoot):
+    """Published final-v5 results, with an absolute 1e-6 temperature tolerance."""
+    assert result["minutes_below_sp_minus_0_7"] == below_07
+    assert result["minutes_below_sp_minus_0_3"] == below_03
+    assert result["min_temp"] == pytest.approx(min_temp, abs=1e-6, rel=0)
+    assert result["overshoot"] == pytest.approx(overshoot, abs=1e-6, rel=0)
+
+
+def test_predictive_port_matches_v5_always_on_diagnostic():
+    pi = simulate("off", solar=True, min_off_minutes=0)
+    predictive = simulate("auto", solar=True, min_off_minutes=0)
+    assert_v5_measurements(pi, 2124, 3999, 19.726638896, 0.486864199)
+    assert_v5_measurements(predictive, 2228, 4080, 19.726638896, 0.503619152)
+    assert pi["promotions_minute"] == pi["demotions_minute"] == []
+    assert predictive["promotions_minute"] == [10080, 14220]
+    assert predictive["demotions_minute"] == [10665, 14222]
 
 
 def test_predictive_auto_not_colder_than_pi_with_solar_mismatch():
