@@ -130,7 +130,25 @@ class PwmHeaterDevice(HeaterDevice):
             return
 
         # Normal proportional control.
+        was_running = self._pwm.running
         await self._pwm.async_start()
+
+        # The loop only switches at segment boundaries. If something else
+        # changed the switch in between (another automation or thermostat on
+        # the same valve), put it back to the planned state now instead of
+        # leaving it until the next boundary, up to a whole cycle later.
+        planned_on = self._pwm.planned_on
+        if was_running and planned_on is not None and planned_on != self.is_active:
+            _LOGGER.info(
+                "%s is %s but the PWM cycle calls for %s; correcting",
+                self.entity_id,
+                "on" if self.is_active else "off",
+                "on" if planned_on else "off",
+            )
+            if planned_on:
+                await self.async_turn_on()
+            else:
+                await self.async_turn_off()
 
         duty = self._pwm.last_duty
         if duty is not None and duty <= 0.0:

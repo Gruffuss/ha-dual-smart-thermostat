@@ -55,6 +55,7 @@ class PwmHeaterController:
         self._cancel_timer: Callable[[], None] | None = None
         self._pending_off_seconds = 0.0
         self._last_duty: float | None = None
+        self._planned_on: bool | None = None
 
     @property
     def running(self) -> bool:
@@ -63,6 +64,11 @@ class PwmHeaterController:
     @property
     def last_duty(self) -> float | None:
         return self._last_duty
+
+    @property
+    def planned_on(self) -> bool | None:
+        """Switch state the current segment calls for (None when not running)."""
+        return self._planned_on if self._running else None
 
     async def async_start(self) -> None:
         """Start the PWM loop (no-op if already running)."""
@@ -104,12 +110,15 @@ class PwmHeaterController:
         )
 
         if plan.always_off:
+            self._planned_on = False
             await self._turn_off()
             self._schedule(self._async_begin_cycle, self._cycle_seconds)
         elif plan.always_on:
+            self._planned_on = True
             await self._turn_on()
             self._schedule(self._async_begin_cycle, self._cycle_seconds)
         else:
+            self._planned_on = True
             await self._turn_on()
             self._pending_off_seconds = plan.off_seconds
             self._schedule(self._async_turn_off_segment, plan.on_seconds)
@@ -117,6 +126,7 @@ class PwmHeaterController:
     async def _async_turn_off_segment(self, *_) -> None:
         if not self._running:
             return
+        self._planned_on = False
         await self._turn_off()
         self._schedule(self._async_begin_cycle, self._pending_off_seconds)
 

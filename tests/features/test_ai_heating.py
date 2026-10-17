@@ -1,7 +1,10 @@
 """Behavioral tests for AI Time Based (learning PWM) heating control."""
 
+from datetime import timedelta
+
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.components.climate import HVACMode
-from homeassistant.const import SERVICE_TURN_ON
+from homeassistant.const import SERVICE_TURN_OFF, SERVICE_TURN_ON, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from homeassistant.util.unit_system import METRIC_SYSTEM
@@ -24,6 +27,7 @@ async def _setup_ai_heater(
     target_temp: float = 21,
     cycle_seconds: int = 600,
     initial_heating_power: float = 0.01,
+    extra: dict | None = None,
 ) -> None:
     hass.config.units = METRIC_SYSTEM
     assert await async_setup_component(
@@ -40,6 +44,7 @@ async def _setup_ai_heater(
                 "ai_initial_heating_power": initial_heating_power,
                 "target_temp": target_temp,
                 "initial_hvac_mode": HVACMode.HEAT,
+                **(extra or {}),
             }
         },
     )
@@ -145,3 +150,71 @@ async def test_ai_restores_learned_state(hass: HomeAssistant) -> None:
     device = _device(hass)
     assert device.heating_power == 0.08
     assert device.heat_loss_rate == 0.03
+
+
+@pytest.mark.asyncio
+async def test_ai_turns_off_heater_switched_on_by_something_else(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A heater switched on behind the PWM loop's back is turned off again.
+
+    The loop only switches at segment boundaries. Seen live on 2026-10-16: with
+    duty 0 (room above target) another actor turned the valve on and it stayed
+    on until the next 30-minute boundary, every cycle. The periodic control
+    pass must put the switch back to the planned state, as bang-bang does.
+    """
+    calls = setup_switch(hass, False)
+    await _setup_ai_heater(
+        hass,
+        target_temp=21,
+        cycle_seconds=1800,
+        extra={"min_cycle_duration": {"minutes": 10}},
+    )
+
+    setup_sensor(hass, 23.0)  # above target -> duty 0, planned off
+    await hass.async_block_till_done()
+    assert _device(hass).duty_cycle == 0.0
+
+    calls.clear()
+    hass.states.async_set(common.ENT_SWITCH, STATE_ON)  # someone else opens it
+    await hass.async_block_till_done()
+
+    # Next periodic control pass (every 60 s with min_cycle_duration), far
+    # before the 1800 s cycle boundary.
+    freezer.tick(timedelta(seconds=61))
+    common.async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    assert [c for c in calls if c.service == SERVICE_TURN_OFF], "should turn off"
+    assert not [c for c in calls if c.service == SERVICE_TURN_ON]
+
+
+@pytest.mark.asyncio
+async def test_ai_turns_back_on_heater_switched_off_by_something_else(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Mirror case: during an on-segment an external turn-off is undone."""
+    calls = setup_switch(hass, False)
+    await _setup_ai_heater(
+        hass,
+        target_temp=21,
+        cycle_seconds=1800,
+        extra={"min_cycle_duration": {"minutes": 10}},
+    )
+
+    setup_sensor(hass, 19.5)  # below target -> full duty, planned on
+    await hass.async_block_till_done()
+    hass.states.async_set(common.ENT_SWITCH, STATE_ON)  # the turn_on landed
+    await hass.async_block_till_done()
+    assert _device(hass).duty_cycle == 100.0
+
+    calls.clear()
+    hass.states.async_set(common.ENT_SWITCH, STATE_OFF)  # someone else closes it
+    await hass.async_block_till_done()
+
+    freezer.tick(timedelta(seconds=61))
+    common.async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    assert [c for c in calls if c.service == SERVICE_TURN_ON], "should turn on"
+    assert not [c for c in calls if c.service == SERVICE_TURN_OFF]
