@@ -218,3 +218,39 @@ async def test_ai_turns_back_on_heater_switched_off_by_something_else(
 
     assert [c for c in calls if c.service == SERVICE_TURN_ON], "should turn on"
     assert not [c for c in calls if c.service == SERVICE_TURN_OFF]
+
+
+@pytest.mark.asyncio
+async def test_ai_heater_cooler_stops_pwm_when_entity_removed(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Removing a heater+cooler AI thermostat stops its PWM loop.
+
+    The PWM timers belong to the heater sub-device. Only the top-level device's
+    remove callbacks were called, so after a reload the old loop kept switching
+    the heater with frozen temperatures, on its own cycle grid, next to the new
+    instance's loop.
+    """
+    calls = setup_switch(hass, False)
+    hass.states.async_set(common.ENT_COOLER, STATE_OFF)
+    await _setup_ai_heater(
+        hass,
+        target_temp=21,
+        cycle_seconds=1800,
+        extra={"cooler": common.ENT_COOLER},
+    )
+    setup_sensor(hass, 19.5)  # below target -> the loop is running
+    await hass.async_block_till_done()
+    assert [c for c in calls if c.service == SERVICE_TURN_ON]
+
+    entity = hass.data["entity_components"]["climate"].get_entity("climate.test")
+    await entity.async_remove()
+    await hass.async_block_till_done()
+
+    calls.clear()
+    for _ in range(3):  # several cycle boundaries
+        freezer.tick(timedelta(seconds=1800))
+        common.async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+    assert not calls, "removed thermostat must not switch the heater"

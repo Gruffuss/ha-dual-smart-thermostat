@@ -84,6 +84,18 @@ class MultiHvacDevice(HVACDevice, ControlableHVACDevice):
                     self._hvac_mode = device_mode
                     break
 
+    @callback
+    def call_on_remove_callbacks(self) -> None:
+        """Call this device's and every sub-device's remove callbacks.
+
+        The climate entity only registers the top-level device's callbacks, so
+        without this a sub-device's timers (e.g. a PWM heater's cycle) would
+        outlive the entity and keep switching its actuator after a reload.
+        """
+        super().call_on_remove_callbacks()
+        for device in self.hvac_devices:
+            device.call_on_remove_callbacks()
+
     def get_device_ids(self) -> list[str]:
         device_ids = []
         for device in self.hvac_devices:
