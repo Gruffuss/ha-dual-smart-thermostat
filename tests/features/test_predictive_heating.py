@@ -89,3 +89,108 @@ async def test_cold_floor_restarts_cycle_full_on(hass, freezer):
     assert heater.duty_cycle == 100
     assert heater._ctl.mode == "fallback"
     assert heater._ctl.demoted_until_min > 1400
+
+
+@pytest.mark.asyncio
+async def test_heat_cool_early_start_inside_band(hass, freezer):
+    hass.states.async_set(common.ENT_COOLER, "off")
+    await _setup(
+        hass,
+        temperature=21.1,
+        extra={
+            "cooler": common.ENT_COOLER,
+            "heat_cool_mode": True,
+            "target_temp_low": 21,
+            "target_temp_high": 25,
+            "initial_hvac_mode": HVACMode.HEAT_COOL,
+            "predictive_gate": "on",
+        },
+    )
+    heater = _heater(hass)
+    assert heater._pwm.running
+    assert heater.duty_cycle > 0, (
+        heater._ctl._last_inputs,
+        heater.hvac_mode,
+        heater._ctl.mode,
+    )
+    await _tick(hass, freezer)
+    assert heater._ctl._last_inputs.demand
+    # A real cooling request must still win, even with a hot slab/heater on.
+    hass.states.async_set(common.ENT_SWITCH, "on")
+    setup_sensor(hass, 27)
+    await hass.async_block_till_done()
+    assert not heater._pwm.running
+    await _tick(hass, freezer)
+    assert not heater._pwm.running
+
+
+@pytest.mark.asyncio
+async def test_opening_invalidates_and_stops(hass, freezer):
+    hass.states.async_set("binary_sensor.window", "off")
+    await _setup(hass, temperature=20, extra={"openings": ["binary_sensor.window"]})
+    heater = _heater(hass)
+    await _tick(hass, freezer, 2)
+    assert heater._ctl._last_inputs.valid
+    hass.states.async_set("binary_sensor.window", "on")
+    await hass.async_block_till_done()
+    await _tick(hass, freezer)
+    assert not heater._ctl._last_inputs.valid
+    assert not heater._pwm.running
+    assert not heater._ctl.tracker.pending
+    hass.states.async_set("binary_sensor.window", "off")
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, 14)
+    assert not heater._ctl._last_inputs.valid
+    await _tick(hass, freezer, 2)
+    assert heater._ctl._last_inputs.valid
+
+
+@pytest.mark.asyncio
+async def test_valve_maintenance_invalidates(hass, freezer):
+    calls = await _setup(hass, temperature=20)
+    heater = _heater(hass)
+    await _tick(hass, freezer, 2)
+    _climate(hass)._set_valve_maintenance_active(True)
+    calls.clear()
+    await _tick(hass, freezer, 31)
+    assert not heater._ctl._last_inputs.valid
+    assert not heater._ctl._last_inputs.demand
+    assert not heater._pwm.running
+    assert not calls, "maintenance owns the valve, including at PWM boundaries"
+    _climate(hass)._set_valve_maintenance_active(False)
+    await _tick(hass, freezer)
+    assert heater._pwm.running
+
+
+@pytest.mark.asyncio
+async def test_ac_active_invalidates_learning(hass, freezer):
+    hass.states.async_set("climate.ac", "off", {"hvac_modes": ["off", "cool"]})
+    await _setup(hass, temperature=20, extra={"cooler": "climate.ac"})
+    heater = _heater(hass)
+    await _tick(hass, freezer, 2)
+    assert heater._ctl._last_inputs.valid
+    hass.states.async_set("climate.ac", "cool", {"hvac_modes": ["off", "cool"]})
+    await hass.async_block_till_done()
+    await _tick(hass, freezer)
+    assert not heater._ctl._last_inputs.valid
+    assert heater._ctl._last_inputs.demand, "AC validity is not a heating interlock"
+    assert not heater._ctl.tracker.pending
+    hass.states.async_set("climate.ac", "off", {"hvac_modes": ["off", "cool"]})
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, 29)
+    assert not heater._ctl._last_inputs.valid
+    await _tick(hass, freezer, 2)
+    assert heater._ctl._last_inputs.valid
+
+
+@pytest.mark.asyncio
+async def test_temperature_fault_uses_feedforward(hass, freezer):
+    await _setup(hass, temperature=20)
+    heater = _heater(hass)
+    await _tick(hass, freezer)
+    _climate(hass)._sensor_stalled = True
+    await _tick(hass, freezer)
+    assert heater._ctl._last_inputs.temp is None
+    assert not heater._ctl._last_inputs.valid
+    assert heater._ctl.pi.output == 32
+    assert heater._pwm.running

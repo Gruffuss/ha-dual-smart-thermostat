@@ -7,6 +7,7 @@ from ..const import ToleranceDevice
 from ..hvac_action_reason.hvac_action_reason import HVACActionReason
 from ..hvac_device.hvac_device import merge_hvac_modes
 from ..hvac_device.multi_hvac_device import MultiHvacDevice
+from ..hvac_device.predictive_heater_device import PredictiveHeaterDevice
 from ..managers.environment_manager import EnvironmentManager
 from ..managers.feature_manager import FeatureManager
 from ..managers.opening_manager import OpeningManager
@@ -43,6 +44,9 @@ class HeaterCoolerDevice(MultiHvacDevice):
             return
 
         self.set_initial_hvac_mode(initial_hvac_mode)
+        if isinstance(self.heater_device, PredictiveHeaterDevice):
+            self.heater_device.set_sibling_cooler(self.cooler_device)
+            self.hvac_mode = self._hvac_mode
 
     def init_hvac_modes(self, hvac_devices: list) -> None:
         """Merge sub-device modes and add the combined HEAT_COOL mode.
@@ -68,6 +72,15 @@ class HeaterCoolerDevice(MultiHvacDevice):
         else:
             self.set_sub_devices_hvac_mode(hvac_mode)
         self._hvac_mode = hvac_mode
+        if isinstance(self.heater_device, PredictiveHeaterDevice):
+            self.heater_device.hvac_mode = (
+                HVACMode.HEAT
+                if hvac_mode in (HVACMode.HEAT, HVACMode.HEAT_COOL)
+                else HVACMode.OFF
+            )
+            self.heater_device.set_cooler_selected(False)
+            if self.heater_device.hvac_mode == HVACMode.OFF:
+                self.heater_device._pwm.cancel()
 
     async def async_control_hvac(self, time=None, force: bool = False):
 
@@ -136,6 +149,10 @@ class HeaterCoolerDevice(MultiHvacDevice):
     async def _async_control_heat_cool(self, time=None, force=False) -> None:
         """Check if we need to turn heating or cooling on or off."""
 
+        if isinstance(self.heater_device, PredictiveHeaterDevice):
+            await self._async_predictive_heat_cool(time, force)
+            return
+
         _LOGGER.info("_async_control_heat_cool. time: %s, force: %s", time, force)
         if not self._active and self.environment.cur_temp is not None:
             self._active = True
@@ -152,6 +169,31 @@ class HeaterCoolerDevice(MultiHvacDevice):
             self._hvac_action_reason = HVACActionReason.LIMIT
         else:
             await self.async_heater_cooler_toggle(time, force)
+
+    async def _async_predictive_heat_cool(self, time, force):
+        """Let the planner heat inside the band, preserving cooling hysteresis."""
+        heater = self.heater_device
+        blocked = self.openings.any_opening_open(self.hvac_mode)
+        cool = (
+            not blocked
+            and not self.environment.is_floor_cold
+            and (
+                self.environment.is_too_hot("_target_temp_high")
+                or (
+                    self.cooler_device.is_active
+                    and not self.environment.is_too_cold("_target_temp_high")
+                )
+            )
+        )
+        heater.set_cooler_selected(cool)
+        await heater.async_control_hvac(time, force)
+        if cool:
+            await self.cooler_device.async_control_hvac(time, force)
+            self._hvac_action_reason = self.cooler_device.HVACActionReason
+        else:
+            if self.cooler_device.is_active:
+                await self.cooler_device.async_turn_off()
+            self._hvac_action_reason = heater.HVACActionReason
 
     async def async_heater_cooler_toggle(self, time=None, force=False) -> None:
         """Toggle heater cooler based on temp and tolarance."""

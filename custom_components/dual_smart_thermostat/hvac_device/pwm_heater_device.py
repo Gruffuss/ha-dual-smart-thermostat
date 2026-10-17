@@ -90,6 +90,10 @@ class PwmHeaterDevice(HeaterDevice):
         outdoor = self.environment.cur_outside_temp
         return compute_tpi_duty(current, target, outdoor, self._tpi_params)
 
+    def _can_control_temperature(self) -> bool:
+        """Whether there is enough temperature history to start a cycle."""
+        return self.environment.cur_temp is not None
+
     async def async_control_hvac(self, time=None, force=False):
         """Run proportional control, applying mode/opening/floor overrides."""
         self._set_self_active()
@@ -124,7 +128,7 @@ class PwmHeaterDevice(HeaterDevice):
         # Don't start cycling until we have a current temperature, otherwise the
         # first (temperature-less) cycle would compute 0 duty and lock heating
         # out until the next cycle boundary.
-        if self.environment.cur_temp is None:
+        if not self._can_control_temperature():
             await self._pwm.async_stop()
             self._hvac_action_reason = HVACActionReason.NONE
             return

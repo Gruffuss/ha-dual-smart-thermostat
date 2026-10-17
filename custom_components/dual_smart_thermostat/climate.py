@@ -167,6 +167,7 @@ from .hvac_device.ai_heater_device import AiHeaterDevice
 from .hvac_device.controllable_hvac_device import ControlableHVACDevice
 from .hvac_device.hvac_device_factory import HVACDeviceFactory
 from .hvac_device.pwm_heater_device import PwmHeaterDevice
+from .hvac_device.predictive_heater_device import PredictiveHeaterDevice
 from .managers.auto_mode_evaluator import AutoDecision, AutoModeEvaluator
 from .managers.environment_manager import EnvironmentManager, TargetTemperatures
 from .managers.feature_manager import FeatureManager
@@ -560,6 +561,13 @@ async def _async_setup_config(
     )
     sensor_key = unique_id or name
     thermostat._action_reason_sensor_key = sensor_key
+    predictive = thermostat._find_pwm_heater()
+    if isinstance(predictive, PredictiveHeaterDevice):
+        predictive.set_temperature_fault_checker(
+            lambda: thermostat._sensor_stalled
+            or (state := hass.states.get(sensor_entity_id)) is None
+            or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE)
+        )
 
     # Valve maintenance configuration (anti-stick exercise of the heater switch).
     thermostat._valve_maintenance_enabled = config.get(CONF_VALVE_MAINTENANCE, False)
@@ -1957,6 +1965,9 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
     def _set_valve_maintenance_active(self, active: bool) -> None:
         """Suspend/resume normal control while valve maintenance runs."""
         self._valve_maintenance_active = active
+        heater = self._find_pwm_heater()
+        if isinstance(heater, PredictiveHeaterDevice):
+            heater.set_maintenance(active)
 
     async def _async_presence_changed(
         self, event: Event[EventStateChangedData]
