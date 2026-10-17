@@ -23,13 +23,32 @@ set_hvac_action_reason:
             - ''
 
 reset_heating_power:
-  name: Reset AI heating power learning
+  name: Reset heating learning
   description: >-
     Reset the AI Time Based learned heating power and heat-loss values to their
-    defaults. Only affects thermostats using the AI heater control mode.
+    defaults, or reset the predictive model and its PI fallback learning.
+    Affects thermostats using the AI or predictive heater control mode.
   target:
     entity:
       domain: climate
+
+import_predictive_state:
+  name: Import predictive heating state
+  description: Import one room from an AppDaemon v5 state file in an allowed directory.
+  target:
+    entity:
+      domain: climate
+  fields:
+    path:
+      required: true
+      description: Path to the v5 JSON file, inside a directory Home Assistant permits reading.
+      selector:
+        text:
+    room:
+      required: true
+      description: Room key in the file's rooms object.
+      selector:
+        text:
 
 run_valve_maintenance:
   name: Run valve maintenance now

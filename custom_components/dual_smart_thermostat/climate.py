@@ -48,6 +48,7 @@ from homeassistant.core import (
     State,
     callback,
 )
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import discovery, entity_platform
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
@@ -125,6 +126,13 @@ from .const import (
     CONF_OPENINGS,
     CONF_OPENINGS_SCOPE,
     CONF_OUTSIDE_SENSOR,
+    CONF_PREDICTIVE_GATE,
+    CONF_PREDICTIVE_INITIAL_K_LOSS,
+    CONF_PREDICTIVE_KI,
+    CONF_PREDICTIVE_KP,
+    CONF_PREDICTIVE_MAE_OFF,
+    CONF_PREDICTIVE_MAE_ON,
+    CONF_PREDICTIVE_MIN_VALIDATIONS,
     CONF_PRECISION,
     CONF_PRESENCE,
     CONF_PRESENCE_SCOPE,
@@ -146,6 +154,13 @@ from .const import (
     CONF_VALVE_MAINTENANCE_INTERVAL,
     DEFAULT_MAX_FLOOR_TEMP,
     DEFAULT_NAME,
+    DEFAULT_PREDICTIVE_GATE,
+    DEFAULT_PREDICTIVE_INITIAL_K_LOSS,
+    DEFAULT_PREDICTIVE_KI,
+    DEFAULT_PREDICTIVE_KP,
+    DEFAULT_PREDICTIVE_MAE_OFF,
+    DEFAULT_PREDICTIVE_MAE_ON,
+    DEFAULT_PREDICTIVE_MIN_VALIDATIONS,
     DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_TOLERANCE,
     DEFAULT_VALVE_MAINTENANCE_INTERVAL,
@@ -166,8 +181,8 @@ from .hvac_action_reason.hvac_action_reason_external import HVACActionReasonExte
 from .hvac_device.ai_heater_device import AiHeaterDevice
 from .hvac_device.controllable_hvac_device import ControlableHVACDevice
 from .hvac_device.hvac_device_factory import HVACDeviceFactory
-from .hvac_device.pwm_heater_device import PwmHeaterDevice
 from .hvac_device.predictive_heater_device import PredictiveHeaterDevice
+from .hvac_device.pwm_heater_device import PwmHeaterDevice
 from .managers.auto_mode_evaluator import AutoDecision, AutoModeEvaluator
 from .managers.environment_manager import EnvironmentManager, TargetTemperatures
 from .managers.feature_manager import FeatureManager
@@ -277,13 +292,27 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_TPI_COEF_INT): vol.Coerce(float),
         vol.Optional(CONF_TPI_COEF_EXT): vol.Coerce(float),
         vol.Optional(CONF_AI_INITIAL_HEATING_POWER): vol.Coerce(float),
-        vol.Optional("predictive_gate", default="auto"): vol.In(["auto", "off", "on"]),
-        vol.Optional("predictive_mae_on", default=0.3): vol.Coerce(float),
-        vol.Optional("predictive_mae_off", default=0.45): vol.Coerce(float),
-        vol.Optional("predictive_min_validations", default=48): vol.Coerce(int),
-        vol.Optional("predictive_kp", default=65.0): vol.Coerce(float),
-        vol.Optional("predictive_ki", default=0.05): vol.Coerce(float),
-        vol.Optional("predictive_initial_k_loss", default=2.0): vol.Coerce(float),
+        vol.Optional(CONF_PREDICTIVE_GATE, default=DEFAULT_PREDICTIVE_GATE): vol.In(
+            ["auto", "off", "on"]
+        ),
+        vol.Optional(
+            CONF_PREDICTIVE_MAE_ON, default=DEFAULT_PREDICTIVE_MAE_ON
+        ): vol.Coerce(float),
+        vol.Optional(
+            CONF_PREDICTIVE_MAE_OFF, default=DEFAULT_PREDICTIVE_MAE_OFF
+        ): vol.Coerce(float),
+        vol.Optional(
+            CONF_PREDICTIVE_MIN_VALIDATIONS, default=DEFAULT_PREDICTIVE_MIN_VALIDATIONS
+        ): vol.Coerce(int),
+        vol.Optional(CONF_PREDICTIVE_KP, default=DEFAULT_PREDICTIVE_KP): vol.Coerce(
+            float
+        ),
+        vol.Optional(CONF_PREDICTIVE_KI, default=DEFAULT_PREDICTIVE_KI): vol.Coerce(
+            float
+        ),
+        vol.Optional(
+            CONF_PREDICTIVE_INITIAL_K_LOSS, default=DEFAULT_PREDICTIVE_INITIAL_K_LOSS
+        ): vol.Coerce(float),
         vol.Optional(CONF_VALVE_MAINTENANCE, default=False): cv.boolean,
         vol.Optional(
             CONF_VALVE_MAINTENANCE_INTERVAL,
@@ -390,7 +419,11 @@ async def async_setup_platform(
             hass,
             Platform.SENSOR,
             DOMAIN,
-            {"name": config[CONF_NAME], "sensor_key": sensor_key},
+            {
+                "name": config[CONF_NAME],
+                "sensor_key": sensor_key,
+                CONF_HEATER_CONTROL_MODE: config.get(CONF_HEATER_CONTROL_MODE),
+            },
             config,
         )
     )
@@ -584,6 +617,11 @@ async def _async_setup_config(
         SERVICE_RESET_HEATING_POWER,
         {},
         "async_reset_heating_power",
+    )
+    platform.async_register_entity_service(
+        "import_predictive_state",
+        {vol.Required("path"): cv.string, vol.Required("room"): cv.string},
+        "async_import_predictive_state",
     )
     # Entity service to run a valve maintenance cycle on demand.
     platform.async_register_entity_service(
@@ -1155,6 +1193,9 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Call when entity will be removed from hass."""
+        heater = self._find_pwm_heater()
+        if isinstance(heater, PredictiveHeaterDevice):
+            await heater.async_shutdown()
         # Remove template listeners
         await self._remove_template_listeners()
 
@@ -1354,6 +1395,17 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             pwm_heater.reset_learning()
             _LOGGER.info("Reset AI heating power learning for %s", self.entity_id)
             self.async_write_ha_state()
+        elif isinstance(pwm_heater, PredictiveHeaterDevice):
+            await pwm_heater.async_reset_learning()
+            self.async_write_ha_state()
+
+    async def async_import_predictive_state(self, path: str, room: str) -> None:
+        """Import one v5 room through the predictive controller's Store."""
+        heater = self._find_pwm_heater()
+        if not isinstance(heater, PredictiveHeaterDevice):
+            raise HomeAssistantError("Thermostat does not use predictive heating")
+        await heater.async_import_state(path, room)
+        self.async_write_ha_state()
 
     async def async_run_valve_maintenance(self) -> None:
         """Service: run a valve maintenance cycle on demand.
@@ -1403,6 +1455,8 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
             if isinstance(pwm_heater, AiHeaterDevice):
                 attributes[ATTR_HEATING_POWER] = pwm_heater.heating_power
                 attributes[ATTR_HEAT_LOSS] = pwm_heater.heat_loss_rate
+            if isinstance(pwm_heater, PredictiveHeaterDevice):
+                attributes["predictive_mode"] = pwm_heater.predictive_mode
 
         # Phase 1.4: expose apparent ("feels-like") temp when the flag is
         # on and humidity is available. Hidden otherwise to avoid clutter.
@@ -1727,6 +1781,15 @@ class DualSmartThermostat(ClimateEntity, RestoreEntity):
 
     async def _async_sensor_not_responding(self, now: datetime | None = None) -> None:
         """Handle sensor stale event."""
+
+        if isinstance(self._find_pwm_heater(), PredictiveHeaterDevice):
+            # Predictive uses feed-forward after a fault, even when the last
+            # cycle was off. Do not keep training on an idle sensor's stale value.
+            self._sensor_stalled = True
+            self._hvac_action_reason = HVACActionReason.TEMPERATURE_SENSOR_STALLED
+            self._publish_hvac_action_reason(self._hvac_action_reason)
+            self.async_write_ha_state()
+            return
 
         state = self.hass.states.get(self.sensor_entity_id)
         _LOGGER.info(

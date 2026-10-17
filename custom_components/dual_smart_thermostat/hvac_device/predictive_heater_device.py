@@ -1,18 +1,30 @@
 """Home Assistant actuator and minute-clock glue for predictive heating."""
 
 from datetime import timedelta
+import json
+import logging
+import math
+from pathlib import Path
 
 from homeassistant.components.climate import HVACMode
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
+from homeassistant.helpers.storage import Store
 import homeassistant.util.dt as dt_util
+from homeassistant.util.unit_conversion import TemperatureConverter
 
+from ..const import DOMAIN, SET_PREDICTIVE_SENSOR_SIGNAL
 from ..control.predictive import MinuteInputs, PredictiveController
 from ..control.tpi import TpiParams
 from .pwm_heater_device import PwmHeaterDevice
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class PredictiveHeaterDevice(PwmHeaterDevice):
@@ -61,6 +73,16 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
         self._sibling_cooler = None
         self._temperature_fault = lambda: False
         self._seen_temperature = False
+        self._last_publish_error = None
+        self._store = Store(hass, 1, f"{DOMAIN}.predictive.{store_key}")
+        self._save_scheduled = False
+        self._removed = False
+        self._shutdown_task = None
+        self.async_on_remove(self._remove)
+
+    @property
+    def predictive_mode(self):
+        return self._ctl.mode
 
     def set_sibling_cooler(self, device):
         """Use the configured cooler for AC validity; never interlock its output."""
@@ -123,10 +145,12 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
         ac_valid = self._last_ac is None or now - self._last_ac >= timedelta(minutes=30)
         return MinuteInputs(
             now_min=(now - self._origin).total_seconds() / 60,
-            temp=temp,
-            outdoor=self._outdoor,
+            temp=self._celsius(temp),
+            outdoor=self._celsius(self._outdoor),
             valve_on=self.is_on,
-            setpoint=getattr(self.environment, self.target_env_attr, None),
+            setpoint=self._celsius(
+                getattr(self.environment, self.target_env_attr, None)
+            ),
             demand=self.hvac_mode == HVACMode.HEAT
             and not self._maintenance
             and not self._cooler_selected
@@ -140,6 +164,14 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
             and not self._maintenance,
         )
 
+    def _celsius(self, value):
+        """The learned coefficients and fault thresholds use Celsius."""
+        if value is None:
+            return None
+        return TemperatureConverter.convert(
+            value, self.hass.config.units.temperature_unit, UnitOfTemperature.CELSIUS
+        )
+
     def _can_control_temperature(self):
         self._inputs()
         return self._seen_temperature
@@ -148,10 +180,29 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
         inp = self._inputs()
         self._planned_setpoint = inp.setpoint
         self._cycle_started = dt_util.utcnow()
+        mode = self._ctl.mode
         self._planned_on_minutes = self._ctl.plan(inp)
+        if mode != self._ctl.mode:
+            # PWM boundaries also call plan without going through the minute
+            # callback. Persist a gate change there immediately as well.
+            self.hass.async_create_task(self.async_save())
         return 100 * self._planned_on_minutes / self._settings.cycle_minutes
 
     async def async_on_startup(self, async_write_ha_state_cb=None):
+        if self._removed:
+            return
+        data = await self._store.async_load()
+        self._origin = self._last_tick = dt_util.utcnow()
+        if data is not None:
+            try:
+                downtime = self._downtime(data.get("saved_at"))
+                self._ctl = PredictiveController.from_dict(
+                    self._settings, data, downtime
+                )
+            except (AttributeError, TypeError, ValueError, OverflowError) as exc:
+                _LOGGER.warning(
+                    "Invalid saved predictive state; starting fresh: %s", exc
+                )
         await super().async_on_startup(async_write_ha_state_cb)
         self.async_on_remove(
             async_track_time_interval(
@@ -169,12 +220,147 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
             )
 
     async def _async_minute(self, now):
+        if self._removed:
+            return
         self._interval_valid = abs((now - self._last_tick).total_seconds() - 60) <= 3
         self._last_tick = now
+        mode = self._ctl.mode
         restart = self._ctl.minute(self._inputs())
         await self.async_control_hvac(force=restart)
+        if mode != self._ctl.mode:
+            await self.async_save()
+        elif not self._save_scheduled:
+            self._save_scheduled = True
+            self._store.async_delay_save(self._delayed_state, 300)
+        self._publish()
+
+    def _downtime(self, saved_at):
+        saved = dt_util.parse_datetime(saved_at)
+        if saved is None or saved.tzinfo is None:
+            raise ValueError("saved timestamp must be aware")
+        return max(0, (dt_util.utcnow() - saved).total_seconds() / 60)
+
+    @callback
+    def _delayed_state(self):
+        self._save_scheduled = False
+        return self._ctl.to_dict()
+
+    async def async_save(self):
+        self._save_scheduled = False
+        await self._store.async_save(self._ctl.to_dict())
+
+    @callback
+    def _remove(self):
+        if not self._removed:
+            self._removed = True
+            self._pwm.cancel()
+            self._shutdown_task = self.hass.async_create_task(self.async_save())
+
+    async def async_shutdown(self):
+        """Finish saving before an entry can reload and read the Store."""
+        self.call_on_remove_callbacks()
+        if self._shutdown_task:
+            await self._shutdown_task
+
+    async def async_import_state(self, path, room):
+        if not self.hass.config.is_allowed_path(path):
+            raise HomeAssistantError("Predictive import path is not allowed")
+        try:
+            data = await self.hass.async_add_executor_job(self._read_import, path)
+            if not isinstance(data, dict) or data.get("version") != 5:
+                raise ValueError("a v5 state file is required")
+            state = data["rooms"][room]
+            restored = PredictiveController.from_appdaemon_room(
+                self._settings, state, self._downtime(state["model_saved_at"])
+            )
+        except (OSError, KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise HomeAssistantError(f"Cannot import predictive state: {exc}") from exc
+        self._ctl = restored
+        self._origin = self._last_tick = dt_util.utcnow()
+        self._interval_valid = False
+        await self.async_save()
+        self._pwm.cancel()
+        await self.async_control_hvac(force=True)
+        self._publish()
+
+    @staticmethod
+    def _read_import(path):
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+
+    async def async_reset_learning(self):
+        self._ctl = PredictiveController(self._settings)
+        self._ctl.mode = "fallback"
+        self._origin = self._last_tick = dt_util.utcnow()
+        self._interval_valid = False
+        self._pwm.cancel()
+        await self.async_save()
+        await self.async_control_hvac(force=True)
+        self._publish()
+
+    def _publish(self):
+        """Publication cannot interrupt or change a valve decision."""
+        now = dt_util.utcnow()
+        try:
+            inp = self._inputs()
+            if self._pwm.running:
+                on_minutes = self._planned_on_minutes
+                elapsed = (now - self._cycle_started).total_seconds() / 60
+            else:
+                # Overrides have no running PWM cycle. Never simulate the age
+                # of a stopped cycle, which could be days of unnecessary work.
+                elapsed = inp.now_min % self._settings.cycle_minutes
+                on_minutes = (
+                    self._settings.cycle_minutes
+                    if (self.environment.is_floor_cold and inp.demand)
+                    else 0
+                )
+            forecasts = self._ctl.forecasts(
+                inp,
+                elapsed,
+                on_minutes,
+            )
+            model, tracker = self._ctl.model.active(), self._ctl.tracker
+            until = self._ctl.demoted_until_min
+            values = {
+                **{f"forecast_{key}": value for key, value in forecasts.items()},
+                "mae_60": tracker.mae60,
+                "mae_120": tracker.mae120,
+                "persistence_mae_120": tracker.persistence_mae120,
+                "mode": self._ctl.mode,
+                "demoted_until": (
+                    (self._origin + timedelta(minutes=until)).isoformat()
+                    if until is not None
+                    else None
+                ),
+                "alpha_rel_sd": model.alpha_rel_sd(),
+                "slab": model.slab,
+                "tau": model.tau,
+                "planned_on_minutes": on_minutes,
+                "validations_120_independent": tracker.n120_independent,
+                "learning_blocks": model.blocks,
+            }
+            values = {
+                k: (None if isinstance(v, float) and not math.isfinite(v) else v)
+                for k, v in values.items()
+            }
+            async_dispatcher_send(
+                self.hass, SET_PREDICTIVE_SENSOR_SIGNAL.format(self._store_key), values
+            )
+            if self._async_write_ha_state_cb:
+                self._async_write_ha_state_cb()
+        except Exception:  # Diagnostics must never affect actuator control.
+            if (
+                self._last_publish_error is None
+                or now - self._last_publish_error >= timedelta(seconds=600)
+            ):
+                self._last_publish_error = now
+                _LOGGER.exception(
+                    "Predictive sensor publication failed for %s", self.entity_id
+                )
 
     async def async_control_hvac(self, time=None, force=False):
+        if self._removed:
+            return
         self._inputs()
         if self._maintenance:
             return
@@ -182,8 +368,11 @@ class PredictiveHeaterDevice(PwmHeaterDevice):
             await self._pwm.async_stop()
             return
         was_running = self._pwm.running
+        mode = self._ctl.mode
         await super().async_control_hvac(time, force)
         if was_running and self._pwm.running and force:
             inp = self._inputs()
             if inp.setpoint != self._planned_setpoint or self._ctl._restart:
                 await self._pwm.async_restart()
+        if mode != self._ctl.mode:
+            await self.async_save()

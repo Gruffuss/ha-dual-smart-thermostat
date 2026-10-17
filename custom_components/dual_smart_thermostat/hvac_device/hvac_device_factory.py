@@ -30,7 +30,6 @@ from ..const import (
     CONF_PWM_CYCLE_DURATION,
     CONF_TPI_COEF_EXT,
     CONF_TPI_COEF_INT,
-    DEFAULT_PWM_CYCLE_DURATION,
     DEFAULT_PREDICTIVE_GATE,
     DEFAULT_PREDICTIVE_INITIAL_K_LOSS,
     DEFAULT_PREDICTIVE_KI,
@@ -38,6 +37,7 @@ from ..const import (
     DEFAULT_PREDICTIVE_MAE_OFF,
     DEFAULT_PREDICTIVE_MAE_ON,
     DEFAULT_PREDICTIVE_MIN_VALIDATIONS,
+    DEFAULT_PWM_CYCLE_DURATION,
     HeaterControlMode,
 )
 from ..control.predictive import PredictiveSettings
@@ -54,8 +54,8 @@ from ..hvac_device.heater_aux_heater_device import HeaterAUXHeaterDevice
 from ..hvac_device.heater_cooler_device import HeaterCoolerDevice
 from ..hvac_device.heater_device import HeaterDevice
 from ..hvac_device.multi_hvac_device import MultiHvacDevice
-from ..hvac_device.pwm_heater_device import PwmHeaterDevice
 from ..hvac_device.predictive_heater_device import PredictiveHeaterDevice
+from ..hvac_device.pwm_heater_device import PwmHeaterDevice
 from ..hvac_device.wrapped_climate_device import WrappedClimateDevice
 from ..managers.environment_manager import EnvironmentManager
 from ..managers.feature_manager import FeatureManager

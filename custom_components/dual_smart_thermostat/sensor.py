@@ -8,19 +8,30 @@ is dual-exposed alongside the existing (deprecated) climate state attribute.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import timedelta
 import logging
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
+from homeassistant.const import CONF_NAME, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+import homeassistant.util.dt as dt_util
 
-from .const import SET_HVAC_ACTION_REASON_SENSOR_SIGNAL
+from .const import (
+    CONF_HEATER_CONTROL_MODE,
+    SET_HVAC_ACTION_REASON_SENSOR_SIGNAL,
+    SET_PREDICTIVE_SENSOR_SIGNAL,
+    HeaterControlMode,
+)
 from .hvac_action_reason.hvac_action_reason import HVACActionReason
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,6 +49,91 @@ def _build_options() -> tuple[str, ...]:
 
 _OPTIONS: tuple[str, ...] = _build_options()
 _OPTIONS_SET: frozenset[str] = frozenset(_OPTIONS)
+
+PREDICTIVE_SENSOR_KEYS = (
+    "forecast_30",
+    "forecast_60",
+    "forecast_120",
+    "forecast_180",
+    "forecast_240",
+    "mae_60",
+    "mae_120",
+    "persistence_mae_120",
+    "mode",
+    "alpha_rel_sd",
+    "slab",
+    "tau",
+    "planned_on_minutes",
+    "validations_120_independent",
+    "learning_blocks",
+)
+
+
+class PredictiveSensor(SensorEntity):
+    """One diagnostic value from the heater's isolated minute publication."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+
+    def __init__(self, sensor_key, name, key):
+        self._sensor_key = sensor_key
+        self._key = key
+        self._attr_unique_id = f"{sensor_key}_predictive_{key}"
+        self._attr_name = f"{name} Predictive {key.replace('_', ' ').title()}"
+        self._attr_native_value = None
+        self._last_write_error = None
+        if key == "mode":
+            self._attr_device_class = SensorDeviceClass.ENUM
+            self._attr_options = ["fallback", "predictive"]
+        else:
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        if key.startswith(("forecast_", "mae_", "persistence_mae_")):
+            self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        if key.startswith("forecast_"):
+            self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        if key in ("tau", "planned_on_minutes"):
+            self._attr_native_unit_of_measurement = UnitOfTime.MINUTES
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SET_PREDICTIVE_SENSOR_SIGNAL.format(self._sensor_key),
+                self._update_value,
+            )
+        )
+
+    @callback
+    def _update_value(self, values):
+        # Dispatcher listeners run as separate HA jobs, outside the publisher's
+        # exception handler. Isolate failures here as well as at the sender.
+        try:
+            self._attr_native_value = values.get(self._key)
+            if self._key == "mode":
+                self._attr_extra_state_attributes = {
+                    "demoted_until": values.get("demoted_until")
+                }
+            self.async_write_ha_state()
+        except Exception:
+            now = dt_util.utcnow()
+            if (
+                self._last_write_error is None
+                or now - self._last_write_error >= timedelta(seconds=600)
+            ):
+                self._last_write_error = now
+                _LOGGER.exception(
+                    "Predictive sensor write failed for %s", self.entity_id
+                )
+
+
+def _sensors(sensor_key, name, config):
+    sensors = [HvacActionReasonSensor(sensor_key=sensor_key, name=name)]
+    if config.get(CONF_HEATER_CONTROL_MODE) == HeaterControlMode.PREDICTIVE:
+        sensors.extend(
+            PredictiveSensor(sensor_key, name, key) for key in PREDICTIVE_SENSOR_KEYS
+        )
+    return sensors
 
 
 class HvacActionReasonSensor(SensorEntity, RestoreEntity):
@@ -123,7 +219,7 @@ async def async_setup_entry(  # NOSONAR python:S7503 - HA platform API
     name = config.get(CONF_NAME, "dual_smart_thermostat")
     sensor_key = config_entry.entry_id
 
-    async_add_entities([HvacActionReasonSensor(sensor_key=sensor_key, name=name)])
+    async_add_entities(_sensors(sensor_key, name, config))
 
 
 async def async_setup_platform(  # NOSONAR python:S7503 - HA platform API
@@ -143,4 +239,4 @@ async def async_setup_platform(  # NOSONAR python:S7503 - HA platform API
     name = discovery_info["name"]
     sensor_key = discovery_info["sensor_key"]
 
-    async_add_entities([HvacActionReasonSensor(sensor_key=sensor_key, name=name)])
+    async_add_entities(_sensors(sensor_key, name, discovery_info))
