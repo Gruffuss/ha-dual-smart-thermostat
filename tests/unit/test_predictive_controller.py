@@ -82,6 +82,8 @@ def ready_gate(**settings):
     for model in ctl.model.models.values():
         model.blocks = 672
         model.err = 0.000001
+        # A trained model's covariance has shrunk well below the wide prior.
+        model.P = [[1e-3, 0, 0], [0, 1e-6, 0], [0, 0, 1e-4]]
     return ctl
 
 

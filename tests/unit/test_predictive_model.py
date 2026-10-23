@@ -187,11 +187,11 @@ def test_tracker_seeds_ewmas_and_counts_nonoverlapping_windows():
 
 def test_covariance_is_symmetric_and_bounded():
     model = heating.SlabRLS(120)
-    model.P = [[0.2, 0.001, 0.003], [0.0011, 0.0002, 0.0001], [0.0032, 0.00011, 0.02]]
+    model.P = [[200, 1, 3], [1.1, 0.2, 0.1], [3.2, 0.11, 20]]
     for _ in range(16):
         model.add_minute(20, 20, True)
-    for i, limit in enumerate((0.1, 0.0001, 0.01)):
-        assert model.P[i][i] <= limit + 1e-14
+    for i, limit in enumerate((100, 0.1, 10)):
+        assert model.P[i][i] <= limit * (1 + 1e-12)
         for j in range(3):
             assert model.P[i][j] == model.P[j][i]
 
@@ -261,3 +261,40 @@ def test_planner_candidates_respect_min_off():
     with patch.object(heating, "forecast", side_effect=values):
         assert plan_cycle(21, 0.9, 5, 21, (0.03, 0.0015, 0), 120, min_off=10)[0] == 0
     assert candidates == [0, *range(10, 21), 30]
+
+
+def test_steady_room_learns_its_heat_gain_within_two_days():
+    """Live hallway, 2026-10-23: valve off, holding 24.2 C at 13.6 C outdoor.
+
+    With v5's narrow prior the model still predicted 0.4 C/h of cooling
+    after 537 blocks.
+    """
+    model = SlabRLS(120)
+    for minute in range(2 * 1440 + 1):
+        outdoor = 13.6 + 3 * math.sin(2 * math.pi * minute / 1440)
+        model.step_slab(False, 1)
+        model.add_minute(24.2, outdoor, True)
+    _, beta, gamma = model.theta
+    assert abs(gamma - beta * (24.2 - 13.6)) < 0.0005
+
+
+def test_old_saved_covariance_is_widened_but_learning_kept():
+    model = RoomModel()
+    data = json.loads(json.dumps(model.to_dict()))
+    del data["prior_version"]
+    for key in data["P"]:
+        data["P"][key] = [[1e-6, 0, 0], [0, 1e-9, 0], [0, 0, 1e-7]]
+        data["theta"][key] = [0.021, 0.0008, 0.0018]
+        data["blocks"][key] = 537
+    restored = RoomModel.from_dict(data)
+    for candidate in restored.models.values():
+        assert candidate.P == [[1.0, 0, 0], [0, 1e-3, 0], [0, 0, 0.1]]
+        assert candidate.theta == (0.021, 0.0008, 0.0018)
+        assert candidate.blocks == 537
+    again = RoomModel.from_dict(json.loads(json.dumps(restored.to_dict())))
+    small = [[1e-6, 0, 0], [0, 1e-9, 0], [0, 0, 1e-7]]
+    for candidate in restored.models.values():
+        candidate.P = [row[:] for row in small]
+    kept = RoomModel.from_dict(json.loads(json.dumps(restored.to_dict())))
+    assert all(c.P == small for c in kept.models.values())
+    assert again.to_dict()["prior_version"] == heating.PRIOR_VERSION
