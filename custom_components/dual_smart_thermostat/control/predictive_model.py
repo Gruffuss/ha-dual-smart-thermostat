@@ -19,15 +19,20 @@ def finite_float(value) -> float | None:
 
 
 TAUS = (60, 90, 120, 150, 180, 240)
+# Prior covariance. Block residuals are slopes of about 1e-3 C/min, so v5's
+# diag(1e-3, 1e-6, 1e-4) let each block move theta by almost nothing: after a
+# week of steady data the model still predicted 0.4 C/h of cooling. The
+# 1000x wider prior lets real data dominate within about a day.
+P0 = (1.0, 1e-3, 1e-1)
+# Saved states without this marker carry the old, collapsed covariance.
+PRIOR_VERSION = 2
 AC_ACTIVE = ("heat", "cool", "heat_cool", "dry", "fan_only", "auto")
 
 
 class SlabRLS:
     """One lag candidate; regress 15 measured intervals, sharing endpoints."""
 
-    def __init__(
-        self, tau, theta0=(0.02, 0.001, 0.0), p0=(1e-3, 1e-6, 1e-4), lam=0.995
-    ):
+    def __init__(self, tau, theta0=(0.02, 0.001, 0.0), p0=P0, lam=0.995):
         self.tau, self.lam = tau, lam
         self.p0 = tuple(p0)
         self.slab, self.err, self.blocks = 0.0, 0.0, 0
@@ -123,7 +128,7 @@ class RoomModel:
             field: {str(tau): getattr(m, field) for tau, m in self.models.items()}
             for field in ("slab", "theta", "P", "err", "blocks")
         }
-        result.update(active_tau=self.active().tau)
+        result.update(active_tau=self.active().tau, prior_version=PRIOR_VERSION)
         # JSON has lists, so make the in-memory representation identical too.
         result["theta"] = {key: list(value) for key, value in result["theta"].items()}
         return result
@@ -154,6 +159,11 @@ class RoomModel:
                 for v, bounds in zip(theta, ((0, 0.2), (0, 0.02), (-0.02, 0.02)))
             )
             model.P = [[float(v) for v in row] for row in matrix]
+            if data.get("prior_version") != PRIOR_VERSION:
+                # Keep what was learned, but let new data move it again.
+                model.P = [
+                    [model.p0[i] if i == j else 0.0 for j in range(3)] for i in range(3)
+                ]
             model._bound_covariance()
             model.slab = clamp(float(data["slab"][key]), 0, 1)
             model.err = max(0, float(data["err"][key]))
